@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Client Dashboard | Oil ERP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" />
+
+  <style>
+    body { background-color: #f8f9fa; font-family: "Segoe UI", sans-serif; }
+    .navbar-brand img { height: 40px; }
+
+    .summary-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px; margin-bottom: 30px;
+    }
+    .summary-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.05); text-align: center; }
+    .summary-card h4 { font-size: 1.2rem; color: #0d6efd; }
+    .summary-card p { font-size: 1.4rem; font-weight: bold; }
+
+    .section-title { font-weight: 600; margin-top: 40px; margin-bottom: 14px; }
+
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .action-card { background: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); text-align: center; transition: all 0.25s ease; }
+    .action-card:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08); }
+    .action-icon { font-size: 2.2rem; color: #0d6efd; margin-bottom: 10px; }
+
+    .footer { margin-top: 50px; padding: 15px 0; background-color: #f1f1f1; text-align: center; font-size: 0.9rem; }
+
+    .dark-mode { background-color: #121212; color: #f1f1f1; }
+    .dark-mode .action-card, .dark-mode .summary-card { background-color: #1f1f1f; color: #eaeaea; }
+    .dark-mode .navbar, .dark-mode .footer { background-color: #1c1c1c; color: #f1f1f1; }
+    .dark-mode .btn-outline-dark { color: #fff; border-color: #ccc; }
+    .dark-mode .btn-outline-dark:hover { background-color: #333; }
+
+    .table-responsive { box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-radius: 10px; overflow: auto; }
+    .table-sticky thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+    .text-money { text-align: right; white-space: nowrap; }
+    .text-end { white-space: nowrap; }
+    .chip { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; padding:.15rem .55rem; font-size:.76rem; border:1px solid #dee2e6; background:#fff; }
+    .chip i { opacity:.75; }
+    .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom: .75rem; }
+    .toolbar .form-select, .toolbar .form-control { max-width: 220px; }
+
+    /* Paid progress cell */
+    .paid-wrap { min-width: 150px; }
+    .progress { height: 8px; }
+
+    /* Hide some columns on small screens for better fit */
+    @media (max-width: 576px) {
+      .col-hide-sm { display: none; }
+      .toolbar .form-select, .toolbar .form-control { max-width: 100%; flex: 1 1 auto; }
+    }
+  </style>
+  <style>
+  /* Banner look */
+  .welcome-wrap {
+    position: relative;
+    border-radius: 18px;
+    padding: 28px 24px;
+    background: linear-gradient(135deg, #0d6efd 0%, #20c997 55%, #0dcaf0 100%);
+    color: #fff;
+    box-shadow: 0 18px 38px rgba(13, 110, 253, 0.25), 0 6px 14px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .welcome-title {
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: .3px;
+    text-shadow: 0 2px 10px rgba(0,0,0,.18);
+  }
+  .welcome-sub {
+    opacity: .95;
+    text-shadow: 0 1px 6px rgba(0,0,0,.18);
+  }
+
+  /* Accent shapes */
+  .welcome-wrap::before,
+  .welcome-wrap::after {
+    content: "";
+    position: absolute;
+    inset: auto auto  -60px -60px;
+    width: 220px; height: 220px;
+    background: radial-gradient(closest-side, rgba(255,255,255,.25), rgba(255,255,255,0));
+    transform: rotate(15deg);
+    filter: blur(2px);
+    z-index: -1;
+  }
+  .welcome-wrap::after {
+    inset: -70px -70px auto auto;
+    width: 280px; height: 280px;
+    background: radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,0));
+    transform: rotate(-5deg);
+  }
+
+  /* Animations */
+  .animate-slide-in {
+    opacity: 0;
+    transform: translateY(24px) scale(.98);
+    animation: slideIn .75s cubic-bezier(.16,.84,.44,1) .08s forwards;
+  }
+  .animate-bounce-in {
+    opacity: 0;
+    transform: translateY(12px) scale(.96);
+    animation: bounceIn .9s cubic-bezier(.25,.9,.25,1.2) .06s forwards;
+  }
+
+  @keyframes slideIn {
+    0% { opacity: 0; transform: translateY(28px) scale(.985); }
+    60% { opacity: 1; transform: translateY(-2px) scale(1.005); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes bounceIn {
+    0% { opacity: 0; transform: translateY(18px) scale(.96); }
+    55% { opacity: 1; transform: translateY(-6px) scale(1.015); }
+    80% { transform: translateY(3px) scale(.997); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Subtle shimmer on the name */
+  .shimmer {
+    position: relative;
+    display: inline-block;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.35) 45%, rgba(255,255,255,0) 80%);
+    transform: translateX(-120%);
+    animation: shimmer 2.2s ease-in-out .7s infinite;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+  @keyframes shimmer {
+    0%   { transform: translateX(-120%); }
+    60%  { transform: translateX(120%); }
+    100% { transform: translateX(120%); }
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-slide-in, .animate-bounce-in { animation: none !important; opacity: 1 !important; transform: none !important; }
+    .shimmer::after { animation: none !important; display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-light bg-white px-3 shadow-sm">
+  <a class="navbar-brand d-flex align-items-center" href="#">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Logo" class="me-2">
+  </a>
+
+  <div class="ms-auto d-flex align-items-center gap-3">
+    <div class="container mt-3">
+  <section id="welcomeBanner" class="welcome-wrap animate-slide-in">
+    <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-3">
+      <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-white bg-opacity-25"
+           style="width:64px;height:64px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35);">
+        <i class="bi bi-emoji-smile" style="font-size:1.6rem;"></i>
+      </div>
+      <div class="flex-grow-1">
+        <!-- Headline -->
+        <h1 class="welcome-title display-5 mb-1">
+          Welcome,
+          <span class="shimmer">
+            {{ client_name or session.get('client_name') or (client.name if client else 'Client') }}
+          </span>
+          👋
+        </h1>
+        <!-- Subtext -->
+        <div class="welcome-sub fs-6">
+          Glad to have you back. Your latest orders and payments are summarized below.
+        </div>
+      </div>
+    <button class="btn btn-outline-dark" onclick="toggleDarkMode()" title="Toggle dark mode">
+      <i class="bi bi-moon"></i>
+    </button>
+    <a href="/logout" class="btn btn-danger">Logout</a>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="container my-5">
+
+  <!-- 🔢 Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <h4><i class="bi bi-list-check me-1"></i> Total Orders</h4>
+      <p id="sumOrders">{{ total_orders }}</p>
+    </div>
+    <div class="summary-card">
+      <h4><i class="bi bi-cash-coin me-1"></i> Total Debt</h4>
+      <p id="sumDebt">GHS {{ '%.2f'|format(total_debt) }}</p>
+    </div>
+    <div class="summary-card">
+      <h4><i class="bi bi-wallet2 me-1"></i> Amount Paid</h4>
+      <p id="sumPaid" class="text-success">GHS {{ '%.2f'|format(total_paid) }}</p>
+    </div>
+    <div class="summary-card">
+      <h4><i class="bi bi-x-circle me-1"></i> Amount Left</h4>
+      <p id="sumLeft" class="text-danger">GHS {{ '%.2f'|format(amount_left) }}</p>
+    </div>
+  </div>
+
+  <!-- 🚚 Current Delivery Info -->
+  <h5 class="section-title"><i class="bi bi-truck text-primary me-2"></i>Current Delivery Info</h5>
+
+  {% if latest_order %}
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <div class="mb-3">
+        <span class="chip" title="TTS Status">
+          <i class="bi bi-shield-check"></i>
+          TTS:
+          {% set tts = latest_order.tts_status or '—' %}
+          <span class="{% if tts|lower in ['released','loaded','approved','goodstanding'] %}text-success{% elif tts|lower in ['brv check unpass','failed'] %}text-danger{% else %}text-warning{% endif %}">
+            {{ tts }}
+          </span>
+        </span>
+        <span class="chip" title="NPA Status">
+          <i class="bi bi-check2-circle"></i>
+          NPA:
+          {% set npa = latest_order.npa_status or '—' %}
+          <span class="{% if npa|lower in ['released','loaded','approved','goodstanding'] %}text-success{% elif npa|lower in ['brv check unpass','failed'] %}text-danger{% else %}text-warning{% endif %}">
+            {{ npa }}
+          </span>
+        </span>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6"><strong>Driver Name:</strong> {{ latest_order.driver_name or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Driver Phone:</strong> {{ latest_order.driver_phone or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Vehicle Number:</strong> {{ latest_order.vehicle_number or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Product:</strong> {{ latest_order.product or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Quantity (L):</strong> {{ latest_order.quantity or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Depot:</strong> {{ latest_order.depot or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Region:</strong> {{ latest_order.region or 'N/A' }}</div>
+        <div class="col-md-6"><strong>Due Date:</strong>
+          {% if latest_order.due_date %}{{ latest_order.due_date.strftime('%Y-%m-%d') }}{% else %}<span class="text-muted">N/A</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning shadow-sm">No recent delivery data available.</div>
+  {% endif %}
+
+  <!-- 📦 Dashboard Quick Actions -->
+  <div class="card-grid">
+    <a href="/client/submit_order" class="action-card text-decoration-none">
+      <div class="action-icon"><i class="bi bi-truck-front"></i></div>
+      <div class="action-title fw-semibold">Submit Order</div>
+      <p class="text-muted mb-0">Place a new order for oil products</p>
+    </a>
+    <a href="/client/order_history" class="action-card text-decoration-none">
+      <div class="action-icon"><i class="bi bi-clock-history"></i></div>
+      <div class="action-title fw-semibold">Order History</div>
+      <p class="text-muted mb-0">View all your past orders and due dates</p>
+    </a>
+    <a href="/client/payment" class="action-card text-decoration-none">
+      <div class="action-icon"><i class="bi bi-credit-card-2-front"></i></div>
+      <div class="action-title fw-semibold">Make Payment</div>
+      <p class="text-muted mb-0">Upload proof of payment for orders</p>
+    </a>
+  </div>
+
+  <!-- 🧾 Recent Orders -->
+  {% if recent_orders %}
+    <h5 class="section-title d-flex align-items-center justify-content-between">
+      <span><i class="bi bi-receipt text-primary me-2"></i>Recent Orders</span>
+    </h5>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="input-group" style="max-width:320px;">
+        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+        <input id="orderSearch" type="search" class="form-control" placeholder="Search orders (ID, product, vehicle, region)…">
+      </div>
+      <select id="typeFilter" class="form-select" title="Filter by order type">
+        <option value="">All Types</option>
+        <option value="s_bdc">S-BDC</option>
+        <option value="s_tax">S-Tax</option>
+        <option value="combo">Combo</option>
+      </select>
+      <select id="ttsFilter" class="form-select" title="Filter by TTS status">
+        <option value="">TTS: All</option>
+        <option value="released">Released</option>
+        <option value="loaded">Loaded</option>
+        <option value="approved">Approved</option>
+        <option value="goodstanding">GoodStanding</option>
+        <option value="failed">Failed</option>
+      </select>
+      <button id="exportCsvBtn" class="btn btn-outline-secondary ms-auto">
+        <i class="bi bi-download me-1"></i> Export CSV
+      </button>
+    </div>
+
+    <div class="table-responsive">
+      <table id="recentOrdersTable" class="table table-bordered table-striped align-middle mb-0 table-sticky">
+        <thead class="table-light">
+          <tr class="text-nowrap">
+            <th data-sort="num">#</th>
+            <th data-sort="txt">Order ID</th>
+            <th data-sort="txt">Product</th>
+            <th data-sort="txt">Order Type</th>
+            <th data-sort="txt" class="col-hide-sm">Vehicle #</th>
+            <th data-sort="num" class="text-end">Qty</th>
+            <th data-sort="num" class="text-money">Debt (GHS)</th>
+            <th data-sort="num" class="text-money">Paid (GHS)</th>
+            <th data-sort="num" class="text-money">Left (GHS)</th>
+            <th data-sort="num" class="paid-wrap">Paid %</th>
+            <th data-sort="txt" class="col-hide-sm">TTS</th>
+            <th data-sort="txt" class="col-hide-sm">NPA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in recent_orders %}
+          {% set tts = (order.tts_status or '—') %}
+          {% set npa = (order.npa_status or '—') %}
+          <tr
+            data-type="{{ (order.order_type or '')|lower }}"
+            data-tts="{{ tts|lower }}"
+            data-search="{{ (order.order_id or '') ~ ' ' ~ (order.product or '') ~ ' ' ~ (order.vehicle_number or '') ~ ' ' ~ (order.region or '') | lower }}"
+          >
+            <td>{{ loop.index }}</td>
+            <td class="fw-semibold">{{ order.order_id or 'N/A' }}</td>
+            <td>{{ order.product }}</td>
+            <td class="text-uppercase">
+              {% if order.order_type == "s_bdc" %} S-BDC
+              {% elif order.order_type == "s_tax" %} S-Tax
+              {% elif order.order_type == "combo" %} Combo
+              {% else %} —
+              {% endif %}
+            </td>
+            <td class="col-hide-sm">{{ order.vehicle_number }}</td>
+            <td class="text-end">{{ "{:,}".format((order.quantity or 0)|int) }}</td>
+            <td class="text-money debt-cell">{{ '%.2f'|format(order.total_debt or 0) }}</td>
+            <td class="text-money paid-cell">{{ '%.2f'|format(order.amount_paid or 0) }}</td>
+            <td class="text-money left-cell">0.00</td>
+            <td class="paid-wrap">
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" role="progressbar" aria-label="Paid percentage">
+                  <div class="progress-bar" style="width:0%"></div>
+                </div>
+                <small class="text-muted paid-pct">0%</small>
+              </div>
+            </td>
+            <!-- TTS badge -->
+            <td class="col-hide-sm">
+              <span class="badge
+                {% if tts|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+                {% elif tts|lower in ['brv check unpass','failed'] %}bg-danger
+                {% elif tts == '—' %}bg-secondary
+                {% else %}bg-warning text-dark{% endif %}">
+                {{ tts }}
+              </span>
+            </td>
+            <!-- NPA badge -->
+            <td class="col-hide-sm">
+              <span class="badge
+                {% if npa|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+                {% elif npa|lower in ['brv check unpass','failed'] %}bg-danger
+                {% elif npa == '—' %}bg-secondary
+                {% else %}bg-warning text-dark{% endif %}">
+                {{ npa }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+  © 2025 Oil ERP | Powered by TrueType Services
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  function toggleDarkMode() { document.body.classList.toggle('dark-mode'); }
+
+  // Helpers
+  function parseMoney(txt){ if(!txt) return 0; const n = Number(String(txt).replace(/[^0-9.-]/g,'')); return isFinite(n) ? n : 0; }
+  const ghFmt = new Intl.NumberFormat('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function fmtMoney(n){ return ghFmt.format(Number(n||0)); }
+
+  // Compute Left + Paid% + update summary (only visible rows)
+  function recalcTableMetrics(){
+    const table = document.getElementById('recentOrdersTable');
+    if (!table) return;
+
+    let sumDebt = 0, sumPaid = 0, visibleRows = 0;
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      const isHidden = tr.style.display === 'none';
+      const debtCell = tr.querySelector('.debt-cell');
+      const paidCell = tr.querySelector('.paid-cell');
+      const leftCell = tr.querySelector('.left-cell');
+      const bar = tr.querySelector('.progress-bar');
+      const pctEl = tr.querySelector('.paid-pct');
+
+      // Always format the money cells
+      const debt = parseMoney(debtCell?.textContent || '0');
+      const paid = parseMoney(paidCell?.textContent || '0');
+      const left = debt - paid;
+
+      if (!isHidden){
+        sumDebt += debt;
+        sumPaid += paid;
+        visibleRows++;
+      }
+
+      if (leftCell) leftCell.textContent = fmtMoney(left);
+      if (debtCell) debtCell.textContent = fmtMoney(debt);
+      if (paidCell) paidCell.textContent = fmtMoney(paid);
+
+      // Progress
+      const pct = debt > 0 ? Math.max(0, Math.min(100, (paid / debt) * 100)) : (paid > 0 ? 100 : 0);
+      if (bar) bar.style.width = pct.toFixed(0) + '%';
+      if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
+    });
+
+    const sumDebtEl = document.getElementById('sumDebt');
+    const sumPaidEl = document.getElementById('sumPaid');
+    const sumLeftEl = document.getElementById('sumLeft');
+
+    if (sumDebtEl) sumDebtEl.textContent = 'GHS ' + fmtMoney(sumDebt);
+    if (sumPaidEl) sumPaidEl.textContent = 'GHS ' + fmtMoney(sumPaid);
+    if (sumLeftEl) sumLeftEl.textContent = 'GHS ' + fmtMoney(sumDebt - sumPaid);
+  }
+
+  // Filters
+  function applyFilters(){
+    const q = (document.getElementById('orderSearch')?.value || '').trim().toLowerCase();
+    const type = (document.getElementById('typeFilter')?.value || '').toLowerCase();
+    const tts  = (document.getElementById('ttsFilter')?.value || '').toLowerCase();
+
+    const table = document.getElementById('recentOrdersTable');
+    if (!table) return;
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      const hay = (tr.getAttribute('data-search') || '').toLowerCase();
+      const rowType = (tr.getAttribute('data-type') || '').toLowerCase();
+      const rowTts  = (tr.getAttribute('data-tts') || '').toLowerCase();
+
+      let show = true;
+      if (q && !hay.includes(q)) show = false;
+      if (type && rowType !== type) show = false;
+      if (tts && rowTts !== tts) show = false;
+
+      tr.style.display = show ? '' : 'none';
+    });
+
+    recalcTableMetrics();
+  }
+
+  // Sorting (simple client-side)
+  (function enableSorting(){
+    const table = document.getElementById('recentOrdersTable');
+    if (!table) return;
+
+    const ths = table.querySelectorAll('thead th');
+    ths.forEach((th, idx) => {
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', () => {
+        const type = th.getAttribute('data-sort') || 'txt';
+        const dir = th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+        ths.forEach(h => h.removeAttribute('data-dir'));
+        th.setAttribute('data-dir', dir);
+
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        const getVal = (tr) => {
+          const td = tr.children[idx];
+          const v = td ? td.textContent.trim() : '';
+          return type === 'num' ? parseMoney(v) : v.toLowerCase();
+        };
+
+        rows.sort((a,b) => {
+          const va = getVal(a), vb = getVal(b);
+          if (type === 'num'){
+            return dir === 'asc' ? (va - vb) : (vb - va);
+          } else {
+            return dir === 'asc' ? (va > vb ? 1 : (va < vb ? -1 : 0)) : (va < vb ? 1 : (va > vb ? -1 : 0));
+          }
+        });
+
+        const tbody = table.querySelector('tbody');
+        rows.forEach(r => tbody.appendChild(r));
+      });
+    });
+  })();
+
+  // CSV export (visible rows)
+  function exportVisibleToCSV(){
+    const table = document.getElementById('recentOrdersTable');
+    if (!table) return;
+    const rows = [];
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    rows.push(headers.join(','));
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      if (tr.style.display === 'none') return;
+      const cols = Array.from(tr.children).map(td => {
+        let txt = td.textContent.trim();
+        // sanitize commas/quotes
+        if (txt.includes('"') || txt.includes(',')) {
+          txt = '"' + txt.replace(/"/g, '""') + '"';
+        }
+        return txt;
+      });
+      rows.push(cols.join(','));
+    });
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'recent_orders.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Wire up filters + export
+  document.getElementById('orderSearch')?.addEventListener('input', applyFilters);
+  document.getElementById('typeFilter')?.addEventListener('change', applyFilters);
+  document.getElementById('ttsFilter')?.addEventListener('change', applyFilters);
+  document.getElementById('exportCsvBtn')?.addEventListener('click', exportVisibleToCSV);
+
+  // Initial calc + recalc when tab refocus
+  recalcTableMetrics();
+  applyFilters();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) recalcTableMetrics(); });
+</script>
+<script>
+  // Choose animation type dynamically (slide or bounce). Keep slide as default; bounce if the user revisits.
+  (function () {
+    try {
+      const banner = document.getElementById('welcomeBanner');
+      if (!banner) return;
+
+      const key = 'clientBannerSeen';
+      const seen = sessionStorage.getItem(key);
+      banner.classList.remove('animate-slide-in','animate-bounce-in');
+      banner.classList.add(seen ? 'animate-bounce-in' : 'animate-slide-in');
+      sessionStorage.setItem(key, '1');
+
+      // Optional: trigger on intersection for extra polish if banner starts below fold
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            banner.style.willChange = 'transform, opacity';
+            setTimeout(() => (banner.style.willChange = 'auto'), 1000);
+            io.disconnect();
+          }
+        });
+      }, { threshold: .4 });
+      io.observe(banner);
+    } catch (e) {}
+  })();
+</script>
+
+</body>
+</html>

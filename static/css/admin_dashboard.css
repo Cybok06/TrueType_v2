@@ -1,0 +1,180 @@
+/* === General Body === */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f8f9fa;
+  margin: 0;
+}
+
+/* === Sidebar Box === */
+.sidebar {
+  height: 100vh;
+  width: 220px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: #0d47a1;
+  color: white;
+  padding-top: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 1050;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+/* === Sidebar Collapse === */
+.sidebar.collapsed {
+  transform: translateX(-100%);
+}
+
+/* === Main Content Area === */
+.main-content {
+  margin-left: 220px;
+  padding: 20px;
+  transition: margin-left 0.3s ease;
+}
+
+.main-content.expanded {
+  margin-left: 0 !important;
+}
+
+/* === Logo Section === */
+.sidebar .logo-img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  border-radius: 10px;
+  margin-bottom: 5px;
+  background: transparent;
+  padding: 0;
+}
+
+.sidebar .logo-text {
+  font-weight: bold;
+  font-size: 17px;
+  text-align: center;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 20px;
+}
+
+/* === Sidebar Links === */
+.sidebar a {
+  display: block;
+  color: white;
+  padding: 10px 20px;
+  text-decoration: none;
+  font-size: 15px;
+  border-left: 3px solid transparent;
+  transition: background 0.3s, border-color 0.3s, color 0.3s;
+  cursor: pointer;
+}
+
+.sidebar a:hover,
+.sidebar .active-link {
+  background-color: #1565c0 !important;
+  border-left: 3px solid #fff;
+}
+
+/* === Logout Link (Red) === */
+.sidebar a[href="/logout"] {
+  color: #ff4d4d;
+  font-weight: bold;
+}
+
+.sidebar a[href="/logout"]:hover {
+  background-color: #c62828 !important;
+  color: white !important;
+  border-left: 3px solid #ffebee;
+}
+
+/* === Dropdown Styling === */
+.sidebar .collapse .sidebar-link {
+  padding-left: 35px;
+  font-size: 14px;
+}
+
+/* === Topbar === */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+/* === Scrollbar for Sidebar === */
+.sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+/* === Responsive Mobile Layout === */
+@media (max-width: 991px) {
+  .sidebar {
+    transform: translateX(-100%);
+    position: fixed;
+    transition: transform 0.3s ease;
+    z-index: 1050;
+  }
+
+  .sidebar.show,
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+  }
+
+  .main-content.expanded {
+    margin-left: 0 !important;
+  }
+
+  /* Sidebar logo should appear beside toggle button */
+  .top-left-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .top-left-bar img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+
+  #toggleSidebar {
+    position: static !important;
+    box-shadow: none;
+  }
+}
+
+/* === Toggle Button Styling === */
+#toggleSidebar {
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1101;
+  background-color: white;
+}
+
+/* === Prevent overlap with content */
+@media (max-width: 991px) {
+  .main-content {
+    padding-top: 60px;
+  }
+}
+canvas {
+  opacity: 0;
+  transition: opacity 0.6s ease-in-out;
+}
+canvas.loaded {
+  opacity: 1;
+}

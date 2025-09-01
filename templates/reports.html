@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Statement – Truetype Services</title>
+
+<style>
+  :root{
+    --ink:#0b1320; --muted:#475569; --line:#e2e8f0; --soft:#f8fafc; --hi:#111827; --brand:#111827;
+    --row:#fbfdff; --row2:#f8fafc; --hover:#eef2ff;
+  }
+  body{font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--ink); background:#fff; margin:24px;}
+  .sheet{max-width:1100px; margin:auto; border:2px solid #2b2b2b; border-radius:8px; padding:18px; background:#fff; box-sizing:border-box;}
+  /* When exporting (PDF/print), lock the canvas to A4-landscape width so it fits exactly */
+  .sheet.exporting { max-width: 1122px; width: 1122px; margin:auto; }
+
+  .brand-bar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px}
+  .brand-left{display:flex; align-items:center; gap:12px}
+  .brand-logo{height:44px; width:auto; border-radius:6px; border:1px solid #e5e7eb; background:#fff; padding:2px}
+  .brand-title{font-weight:800; letter-spacing:.03em; font-size:20px; margin:0; line-height:1.1}
+  .brand-sub{font-weight:700; margin:0; color:var(--brand); font-size:13px}
+  .brand-center{flex:1; text-align:center}
+  .action-bar{display:flex; gap:8px}
+  .btn{display:inline-block; padding:7px 10px; border:1px solid #111827; background:#111827; color:#fff; border-radius:6px; text-decoration:none; cursor:pointer; font-size:12px}
+  .btn.ghost{background:#fff; color:#111827; border-color:#d1d5db}
+  .btn:disabled{opacity:.6; cursor:not-allowed}
+
+  .meta{width:100%; border-collapse:collapse; margin-bottom:8px}
+  .meta th,.meta td{border:1.5px solid #2b2b2b; padding:6px 8px; font-weight:600}
+  .meta td{font-weight:500}
+  .meta th{background:#f3f4f6; text-align:left}
+
+  .section-title{border:1.5px solid #2b2b2b; border-top:none; padding:5px 8px; font-weight:700; text-align:center; margin-bottom:6px}
+
+  .table-wrap{overflow:auto; border:1.5px solid #2b2b2b; border-radius:6px}
+  table.statement{width:100%; border-collapse:collapse; min-width:980px; font-size:12px; table-layout:fixed}
+  .statement th,.statement td{
+    border:1px solid var(--line);
+    padding:.24rem .32rem;   /* tight row height */
+    vertical-align:middle;
+    line-height:1.05;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  /* Allow description to wrap only during export/print to avoid truncation in PDF */
+  .exporting .statement td:nth-child(2),
+  .exporting .statement th:nth-child(2) { white-space:normal; overflow:visible; text-overflow:initial; }
+  .statement thead th{background:var(--soft); font-weight:700; text-align:center}
+  .statement thead .top th{border-bottom:2px solid #cbd5e1}
+  .statement tbody th[scope=row]{font-weight:600; white-space:nowrap}
+  .statement tbody tr:nth-child(odd){background:var(--row)}
+  .statement tbody tr:nth-child(even){background:var(--row2)}
+  .statement tbody tr:hover{background:var(--hover)}
+  .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .subtle{color:var(--muted)}
+  tfoot td,tfoot th{font-weight:800; background:#f9fafb}
+
+  .filters{max-width:1100px; margin:0 auto 12px; display:flex; gap:8px; align-items:end; flex-wrap:wrap}
+  .filters label{display:block; font-size:12px; color:#334155; margin-bottom:4px}
+  .filters input[type="month"], .filters select{padding:7px 9px; border:1px solid #d1d5db; border-radius:6px; min-width:220px}
+  .filters button{padding:8px 12px; border:1px solid #111827; background:#111827; color:#fff; border-radius:6px; cursor:pointer}
+  .filters .spacer{flex:1}
+  .note{max-width:1100px; margin:8px auto; color:#64748b}
+  .generated-stamp{margin-top:6px; font-size:11px; color:#6b7280}
+
+  /* keep header/footer with table for print/html2pdf */
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+
+  /* print */
+  @media print{
+    @page{ size:A4 landscape; margin:8mm }
+    body{margin:0; background:#fff; font-size:12px}
+    .filters,.action-bar{display:none}
+    .sheet{border:none; padding:0; max-width:unset; width:auto;}
+    .table-wrap{border:none}
+    table.statement{font-size:10.5px}
+    .statement th,.statement td{padding:.18rem .24rem}
+    /* Wrap the Description col when printing to prevent clipping */
+    .statement td:nth-child(2), .statement th:nth-child(2){white-space:normal; overflow:visible; text-overflow:initial;}
+    a{color:inherit; text-decoration:none}
+  }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+</head>
+<body>
+
+<!-- Filters -->
+<form class="filters row g-3 align-items-end" method="get" action="/reports">
+  <!-- Month -->
+  <div class="col-md-4">
+    <label for="month" class="form-label fw-semibold">Month</label>
+    <input type="month" id="month" name="month" 
+           class="form-control shadow-sm" 
+           value="{{ month or '' }}">
+  </div>
+
+  <!-- Client -->
+  <div class="col-md-5">
+    <label for="client_id" class="form-label fw-semibold">Client</label>
+    <select id="client_id" name="client_id" 
+            class="form-select shadow-sm">
+      <option value="">— All Clients —</option>
+      {% for c in clients %}
+        <option value="{{ c._id }}" {% if client_id==c._id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Generate Button -->
+  <div class="col-md-3 text-end">
+    <button type="submit" class="btn btn-primary w-100 shadow-sm">
+      <i class="bi bi-bar-chart-fill me-1"></i> Generate
+    </button>
+  </div>
+</form>
+
+
+{% if not result %}
+  <div class="note">
+    Choose a <strong>Month</strong> and/or a <strong>Client</strong>, then click <em>Apply</em> to generate the statement.
+  </div>
+{% else %}
+  <div class="sheet" id="sheetRoot">
+    <!-- Header -->
+    <div class="brand-bar">
+      <div class="brand-left">
+        <img class="brand-logo" alt="Truetype Services Logo"
+             src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" />
+        <div>
+          <div class="brand-title">STATEMENT</div>
+          <div class="brand-sub">TRUETYPE SERVICES</div>
+        </div>
+      </div>
+      <div class="brand-center"></div>
+      <div class="action-bar">
+        <button type="button" class="btn ghost" id="btnPrint">Print</button>
+        <button type="button" class="btn" id="btnExcel">Export Excel</button>
+      </div>
+    </div>
+
+    <!-- Meta (JS will read these cells safely) -->
+    <table class="meta" id="metaTable">
+      <tr>
+        <th style="width:40%">CUSTOMER NAME:</th>
+        <td>{{ result.meta.customer_name }}</td>
+        <th style="width:20%">PERIOD:</th>
+        <td>{{ result.meta.period_label }}</td>
+      </tr>
+    </table>
+
+    <div class="section-title">Account Activity</div>
+
+    <div class="table-wrap">
+      <table id="statementTable" class="statement" aria-describedby="acct-activity">
+        <caption id="acct-activity" class="subtle" style="caption-side:bottom;padding:.3rem">
+          All amounts in GHS • Description column shows BRV/Vehicle, Region/Destination, Driver &amp; Phone where available.
+        </caption>
+
+        <thead>
+          <tr class="top">
+            <th rowspan="2" scope="col" style="width:7.8rem">Date</th>
+            <th rowspan="2" scope="col">Description / BRV # / Destination</th>
+
+            {% for prod in result.products %}
+              <th colspan="3" scope="colgroup">{{ prod }}</th>
+            {% endfor %}
+
+            <th rowspan="2" scope="col" style="width:7.8rem">TOTAL<br><span class="subtle">GHS</span></th>
+            <th rowspan="2" scope="col" style="width:7.8rem">Payment<br><span class="subtle">GHS</span></th>
+            <th rowspan="2" scope="col" style="width:7.8rem">Balance<br><span class="subtle">GHS</span></th>
+          </tr>
+          <tr>
+            {% for _ in result.products %}
+              <th scope="col" style="width:5.1rem">VOL.</th>
+              <th scope="col" style="width:5.1rem">PRICE</th>
+              <th scope="col" style="width:6rem">AMOUNT</th>
+            {% endfor %}
+          </tr>
+        </thead>
+
+        <tbody>
+          {% if result.rows|length == 0 %}
+            <tr>
+              <td colspan="{{ 2 + (result.products|length * 3) + 3 }}" class="subtle" style="text-align:center;padding:.6rem">
+                No activity for this period.
+              </td>
+            </tr>
+          {% else %}
+            {% for r in result.rows %}
+              <tr>
+                <th scope="row">{% if r.date %}{{ r.date.strftime('%d-%b-%y') }}{% else %}—{% endif %}</th>
+                <td>{% if r.is_opening %}Balance b/f{% else %}{{ r.description }}{% endif %}</td>
+
+                {% for prod in result.products %}
+                  {% if not r.is_payment and not r.is_opening and r.product == prod %}
+                    <td class="num">{{ r.vol|fmt_int }}</td>
+                    <td class="num">{{ r.price|fmt_money }}</td>
+                    <td class="num">{{ r.amount|fmt_money }}</td>
+                  {% else %}
+                    <td class="num">–</td><td class="num">–</td><td class="num">–</td>
+                  {% endif %}
+                {% endfor %}
+
+                <td class="num">{% if r.is_opening or not r.is_payment %}{{ r.amount|fmt_money }}{% else %}–{% endif %}</td>
+                <td class="num">{% if r.is_payment %}{{ r.payment|fmt_money }}{% else %}–{% endif %}</td>
+                <td class="num">{% if r.balance is not none %}{{ r.balance|fmt_money }}{% else %}–{% endif %}</td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+
+        <tfoot>
+          <tr>
+            <th scope="row" colspan="2">Total</th>
+            {% for prod in result.products %}
+              <td class="num">{{ result.totals.per_product[prod].vol|fmt_int }}</td>
+              <td></td>
+              <td class="num">{{ result.totals.per_product[prod].amount|fmt_money }}</td>
+            {% endfor %}
+            <td class="num">{{ result.totals.grand_total_col|fmt_money }}</td>
+            <td class="num">{{ result.totals.payments_total|fmt_money }}</td>
+            <td class="num">{{ result.totals.closing_balance|fmt_money }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="generated-stamp" id="generatedStamp"></div>
+  </div>
+{% endif %}
+
+<!-- export libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/vfs_fonts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<script>
+(function(){
+  const LOGO_URL = "https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif";
+
+  /* --- tiny utils --- */
+  function nowStamp(){
+    const d = new Date();
+    const pad = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function setStamp(){
+    const el = document.getElementById("generatedStamp");
+    if (el) el.textContent = "Generated: " + nowStamp();
+  }
+
+  /* Read meta values safely from DOM (no Jinja in JS) */
+  function readMeta(){
+    const meta = document.getElementById("metaTable");
+    if (!meta) return { customer:"—", period:"—" };
+    const tds = meta.querySelectorAll("td");
+    const customer = (tds[0]?.textContent || "—").trim();
+    const period   = (tds[1]?.textContent || "—").trim();
+    return { customer, period };
+  }
+
+  /* -------- Vector PDF helpers (Shift+Click) -------- */
+  function flattenHeaderForPdf(table){
+    const topThs = table.querySelectorAll("thead tr:nth-child(1) th");
+    const prods = Array.from(topThs).slice(2, topThs.length - 3).map(th => th.textContent.trim());
+    const flat = ["Date", "Description"];
+    prods.forEach(p => flat.push(p+" VOL.", p+" PRICE", p+" AMOUNT"));
+    flat.push("TOTAL","Payment","Balance");
+    return flat;
+  }
+  function rowToCells(tr, totalCols){
+    const out = [];
+    tr.querySelectorAll("th,td").forEach(cell=>{
+      const txt = (cell.textContent || "").trim();
+      const span = Number(cell.getAttribute("colspan") || 1);
+      out.push(txt);
+      for (let i=1;i<span;i++) out.push("");
+    });
+    while (out.length < totalCols) out.push("");
+    if (out.length > totalCols) out.length = totalCols;
+    return out;
+  }
+  async function toDataURL(url){
+    try{
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const p = new Promise((resolve)=>{ 
+        img.onload=()=>{ 
+          const c=document.createElement("canvas"); 
+          c.width=img.width; c.height=img.height; 
+          c.getContext("2d").drawImage(img,0,0); 
+          resolve(c.toDataURL("image/png")); 
+        }; 
+        img.onerror=()=>resolve(null); 
+      });
+      img.src = url; return await p;
+    }catch(_){ return null; }
+  }
+  function buildVectorDoc(table, stamp, logoDataUrl, customerName, periodLabel){
+    const header = flattenHeaderForPdf(table);
+    const body = [ header ];
+    const totalCols = header.length;
+    table.querySelectorAll("tbody tr").forEach(tr=> body.push(rowToCells(tr, totalCols)));
+    table.querySelectorAll("tfoot tr").forEach(tr=> body.push(rowToCells(tr, totalCols)));
+    const widths = Array(totalCols).fill('*'); /* stretch to page width */
+
+    const metaTable = {
+      table: { widths: ["auto","*","auto","*"], body: [
+        [{text:"CUSTOMER NAME:",bold:true,noWrap:true}, customerName,
+         {text:"PERIOD:",bold:true,noWrap:true}, periodLabel]
+      ]},
+      margin:[0,4,0,8], layout:"lightHorizontalLines"
+    };
+
+    return {
+      pageOrientation:"landscape",
+      pageSize:"A4",
+      pageMargins:[12,12,12,16],
+      content:[
+        { columns:[
+          logoDataUrl ? { image: logoDataUrl, width: 46, margin:[0,0,8,0]} : {},
+          { text:"STATEMENT", fontSize:14, bold:true, alignment:"center", margin:[0,0,0,1]},
+          { text:"TRUETYPE SERVICES", fontSize:10, bold:true, alignment:"right", margin:[0,2,0,0]}
+        ]},
+        metaTable,
+        { table:{ headerRows:1, widths, body },
+          layout:{
+            paddingLeft:()=>2, paddingRight:()=>2, paddingTop:()=>1.5, paddingBottom:()=>1.5,
+            fillColor:(rowIndex)=> rowIndex===0 ? "#f8fafc" : (rowIndex%2===0 ? "#fbfdff" : "#ffffff"),
+            hLineWidth:()=>0.5, vLineWidth:()=>0.5
+          },
+          fontSize:9
+        }
+      ],
+      footer:(currentPage,pageCount)=>({
+        columns:[
+          {text:"Generated: " + stamp, alignment:"left", margin:[18,0,0,0], fontSize:8},
+          {text: currentPage + " / " + pageCount, alignment:"right", margin:[0,0,18,0], fontSize:8}
+        ]
+      }),
+      defaultStyle:{fontSize:9.2, lineHeight:1.05}
+    };
+  }
+
+  /* -------- Excel Export -------- */
+  function exportExcel(table, stamp){
+    const clone = table.cloneNode(true);
+    const colCount = clone.rows[0] ? clone.rows[0].cells.length : 1;
+    const stampRow = clone.insertRow(0);
+    const cell = document.createElement("th");
+    cell.colSpan = colCount;
+    cell.textContent = "Generated: " + stamp;
+    cell.style.textAlign = "left"; cell.style.fontWeight = "bold"; cell.style.padding = "6px";
+    stampRow.appendChild(cell);
+    const wb = XLSX.utils.table_to_book(clone, { sheet: "Statement" });
+    const fname = `Statement_${stamp.replace(/[: ]/g, "_")}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }
+
+  document.addEventListener("DOMContentLoaded", async function(){
+    setStamp();
+
+    const sheet    = document.getElementById("sheetRoot");
+    const table    = document.getElementById("statementTable");
+    const metaEl   = document.getElementById("metaTable");
+    const btnPrint = document.getElementById("btnPrint");
+    const btnPDF   = document.getElementById("btnPDF");
+    const btnExcel = document.getElementById("btnExcel");
+    const stamp    = nowStamp();
+
+    if (btnPrint) btnPrint.addEventListener("click", () => window.print());
+
+    // Lock layout to A4 width when exporting so html2pdf captures a perfect fit
+    function beginExportLayout(){
+      if (sheet) sheet.classList.add("exporting");
+    }
+    function endExportLayout(){
+      if (sheet) sheet.classList.remove("exporting");
+    }
+
+    if (btnPDF) {
+      btnPDF.addEventListener("click", async (e) => {
+        if (!table || !metaEl) {
+          alert("Generate a statement first (choose month/client and Apply).");
+          return;
+        }
+        btnPDF.disabled = true;
+        beginExportLayout();
+        try{
+          const { customer, period } = readMeta();
+          if (!e.shiftKey && window.html2pdf) {
+            /* Default = WYSIWYG export (fills page like Print). */
+            await html2pdf().set({
+              margin: [8,8,8,8],
+              filename: `Statement_${stamp.replace(/[: ]/g, "_")}.pdf`,
+              pagebreak: { mode: ['avoid-all','css','legacy'] },
+              image: { type: "jpeg", quality: 0.98 },
+              // scale 2 = sharp text; useCORS to pull logo nicely
+              html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 1122 },
+              jsPDF: { unit: "mm", format: "a4", orientation: "landscape" }
+            }).from(sheet).save();
+          } else if (typeof pdfMake !== "undefined" && pdfMake.createPdf) {
+            /* Shift+Click = vector PDF; header repeats, column auto-fit */
+            const logo = await toDataURL(LOGO_URL);
+            const docDef = buildVectorDoc(table, stamp, logo, customer, period);
+            pdfMake.createPdf(docDef).download(`Statement_${stamp.replace(/[: ]/g, "_")}.pdf`);
+          } else {
+            alert("PDF engine not available.");
+          }
+        } catch (err) {
+          console.error(err);
+          alert("PDF failed to generate.");
+        } finally {
+          endExportLayout();
+          btnPDF.disabled = false;
+        }
+      });
+    }
+
+    if (btnExcel) {
+      btnExcel.addEventListener("click", () => {
+        if (!table) { alert("Generate a statement first."); return; }
+        exportExcel(table, stamp);
+      });
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

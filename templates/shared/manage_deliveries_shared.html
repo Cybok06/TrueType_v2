@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ bdc_name }} — Manage Deliveries (Shared)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Favicon + Brand -->
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <!-- Bootstrap & jQuery -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <style>
+    body { background:#f6f8fb; }
+    .navbar-brand img { height: 36px; }
+    .chip { background:#eef2ff; color:#3b82f6; border-radius:999px; padding:.25rem .6rem; font-size:.8rem; }
+    .page-title { font-weight:700; color:#0b1320; }
+    .subtle { color:#64748b; }
+
+    .table-wrap { box-shadow: 0 4px 16px rgba(0,0,0,.06); border-radius:12px; overflow:auto; background:white; }
+    .table { margin-bottom:0; }
+    .table thead th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+    .table td, .table th { vertical-align: middle; }
+    .table .badge { font-weight:600; }
+    .legend .badge { font-size:.75rem; }
+
+    .controls-row { gap: .5rem; }
+    @media (max-width: 576px) {
+      .controls-row { flex-direction: column; align-items: stretch; }
+      .share-actions { width:100%; }
+    }
+
+    .btn-save[disabled] { pointer-events:none; opacity:.7; }
+
+    .share-pill {
+      background:#0b1320; color:#fff; border-radius:999px; padding:.4rem .8rem;
+      display:inline-flex; align-items:center; gap:.45rem; text-decoration:none;
+    }
+    .share-pill .bi { font-size:1rem; }
+    .share-url {
+      max-width: 48ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      font-size:.9rem; color:#334155;
+    }
+    footer { color:#94a3b8; font-size:.85rem; }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<nav class="navbar navbar-light bg-white shadow-sm">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+      <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Company Logo">
+      <span class="fw-semibold d-none d-sm-inline">TrueType Services</span>
+    </a>
+
+    <!-- RIGHT SIDE: Shared session + Share Page link -->
+    <div class="d-flex align-items-center gap-2 share-actions">
+      <span class="chip d-none d-sm-inline">Shared Session</span>
+
+      <!-- Build full landing URL: host + /deliveries/shared/<token> -->
+      {% set landing_path = url_for('shared_links.shared_landing', token=token) %}
+      {% set landing_full = request.host_url.rstrip('/') ~ landing_path %}
+
+      <!-- "Share Page" button opens the public landing (passcode page) -->
+      <a class="share-pill" href="{{ landing_path }}" target="_blank" rel="noopener">
+        <i class="bi bi-link-45deg"></i>
+        <span>Share Page</span>
+      </a>
+
+      <!-- Copy-to-clipboard small control -->
+      <button class="btn btn-outline-secondary btn-sm" id="btnCopyShare"
+              data-url="{{ landing_full }}" title="Copy share link">
+        <i class="bi bi-clipboard"></i> Copy link
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- Content -->
+<main class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+    <div class="mb-2">
+      <h4 class="page-title mb-0">🚚 {{ bdc_name }} — Manage Deliveries</h4>
+      <div class="subtle small">Update TTS and NPA statuses for this BDC only.</div>
+      <div class="mt-2">
+        <div class="small">Public link (passcode required):</div>
+        <div class="share-url" id="shareUrlText">{{ landing_full }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend mb-3">
+    <span class="badge bg-success me-1">Green: Released/Loaded/Approved/GoodStanding</span>
+    <span class="badge bg-warning text-dark me-1">Yellow: In Progress / Other</span>
+    <span class="badge bg-danger me-1">Red: BRV check unpass / Failed</span>
+    <span class="badge bg-secondary">Grey: —</span>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table class="table table-striped table-hover align-middle">
+      <thead>
+        <tr class="text-nowrap">
+          <th>Client</th>
+          <th>Product</th>
+          <th>Vehicle #</th>
+          <th class="text-end">Qty</th>
+          <th>Region</th>
+          <th>Delivery</th>
+          <th>TTS</th>
+          <th>NPA</th>
+          <th style="min-width:220px;">Update</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in deliveries %}
+        {% set del = (d.delivery_status or 'pending') %}
+        {% set tts = (d.tts_status or '—') %}
+        {% set npa = (d.npa_status or '—') %}
+        <tr>
+          <td>{{ d.client_name }}</td>
+          <td>{{ d.product }}</td>
+          <td>{{ d.vehicle_number }}</td>
+          <td class="text-end">{{ "{:,}".format((d.quantity or 0)|int) }}</td>
+          <td>{{ d.region }}</td>
+
+          <!-- Delivery badge -->
+          <td>
+            <span class="badge
+              {% if del|lower in ['delivered','released','loaded'] %}bg-success
+              {% elif del|lower in ['failed attempt','returned'] %}bg-danger
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ del|capitalize }}
+            </span>
+          </td>
+
+          <!-- TTS badge -->
+          <td>
+            <span class="badge
+              {% if tts|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+              {% elif tts|lower in ['brv check unpass','failed'] %}bg-danger
+              {% elif tts == '—' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ tts }}
+            </span>
+          </td>
+
+          <!-- NPA badge -->
+          <td>
+            <span class="badge
+              {% if npa|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+              {% elif npa|lower in ['brv check unpass','failed'] %}bg-danger
+              {% elif npa == '—' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ npa }}
+            </span>
+          </td>
+
+          <!-- Update controls -->
+          <td>
+            <form class="update-status-form" data-id="{{ d.order_id }}">
+              <div class="d-flex controls-row">
+                <select name="tts_select" class="form-select form-select-sm" aria-label="Select TTS status" title="TTS Status">
+                  <option value="">TTS…</option>
+                  {% for s in status_options %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+                <select name="npa_select" class="form-select form-select-sm" aria-label="Select NPA status" title="NPA Status">
+                  <option value="">NPA…</option>
+                  {% for s in status_options %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary btn-save">
+                  <span class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+                  Save
+                </button>
+              </div>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Footer -->
+<footer class="text-center py-4">
+  © {{ (now() if now else None) or '' }} Oil ERP &middot; Powered by CYTECH
+</footer>
+
+<!-- Toasts -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+  <div id="toastSave" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Icons + Scripts -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Small helper to show toasts
+  function showToast(message, isSuccess = true) {
+    const toastEl = document.getElementById('toastSave');
+    const body = toastEl.querySelector('.toast-body');
+    body.textContent = message;
+    toastEl.classList.remove('text-bg-success','text-bg-danger');
+    toastEl.classList.add(isSuccess ? 'text-bg-success' : 'text-bg-danger');
+    const t = new bootstrap.Toast(toastEl, { delay: 2500 });
+    t.show();
+  }
+
+  // Copy share link
+  document.getElementById('btnCopyShare').addEventListener('click', async (e) => {
+    const url = e.currentTarget.getAttribute('data-url');
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Share link copied.');
+    } catch {
+      // Fallback: select the visible text
+      const textEl = document.getElementById('shareUrlText');
+      if (window.getSelection && document.createRange) {
+        const range = document.createRange();
+        range.selectNodeContents(textEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      showToast('Select & copy the link shown above.', false);
+    }
+  });
+
+  // Submit update
+  $(document).on('submit', '.update-status-form', function(e) {
+    e.preventDefault();
+    const form = $(this);
+    const orderId = form.data('id');
+    const btn = form.find('.btn-save');
+    const spinner = btn.find('.spinner-border');
+
+    const tts = form.find('select[name="tts_select"]').val();
+    const npa = form.find('select[name="npa_select"]').val();
+
+    if (!tts && !npa) {
+      showToast('Select TTS and/or NPA status.', false);
+      return;
+    }
+
+    btn.attr('disabled', true);
+    spinner.removeClass('d-none');
+
+    $.post(`/deliveries/shared/{{ token }}/update_status/${orderId}`, { tts_status: tts, npa_status: npa })
+      .done(function(resp) {
+        if (resp && resp.success) {
+          showToast('Status updated successfully.');
+          // Refresh after a short delay to show updated badges
+          setTimeout(() => window.location.reload(), 600);
+        } else {
+          showToast((resp && resp.message) || 'Failed to update.', false);
+          btn.removeAttr('disabled');
+          spinner.addClass('d-none');
+        }
+      })
+      .fail(function() {
+        showToast('Network error. Try again.', false);
+        btn.removeAttr('disabled');
+        spinner.addClass('d-none');
+      });
+  });
+</script>
+</body>
+</html>

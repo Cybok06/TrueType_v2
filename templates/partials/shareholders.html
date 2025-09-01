@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shareholders Performance</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <!-- Chart.js (kept; we’ll guard usage below) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root{ --card-shadow: 0 8px 30px rgba(0,0,0,.06); --table-radius: 14px; }
+    body { background-color: #f5f7fb; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    .summary-card { border-radius: 16px; background: #fff; box-shadow: var(--card-shadow); padding: 22px; text-align: center; }
+    .summary-card h4 { font-size: .95rem; color: #6c757d; margin: 0; letter-spacing:.2px }
+    .summary-card h2 { font-weight: 800; font-size: 1.65rem; color: #1f2937; margin: 0; }
+
+    .pro-table { background:#fff; border-radius: var(--table-radius); overflow: hidden; box-shadow: var(--card-shadow); }
+    .pro-table thead th { background: linear-gradient(180deg,#0d6efd,#0b5ed7); color:#fff; font-weight:600; letter-spacing:.3px; border:0; }
+    .pro-table.table > :not(caption) > * > * { padding: 0.9rem 1rem; }
+    .pro-table tbody tr:hover { background:#f8fbff; }
+    .pro-table th, .pro-table td { text-align:center; vertical-align:middle; }
+    .pro-table .section-row { background:#eef2ff; font-weight:600; color:#3730a3; }
+    .table-note { color:#64748b; font-size:.85rem; }
+
+    .chart-container { background:#fff; border-radius:16px; padding:20px; margin-top:30px; box-shadow:var(--card-shadow); }
+    @media (max-width: 768px) { .chart-container canvas { height: 250px !important; } }
+    .muted { color:#6c757d; }
+    .cardish { background:#fff; border-radius:16px; box-shadow:var(--card-shadow); padding:16px; }
+    .pill { background:#eef2ff; color:#3730a3; padding:.30rem .6rem; border-radius:999px; font-weight:600; font-size:.85rem; }
+    .block-header { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .nowrap { white-space: nowrap; }
+    .btn-edit { white-space: nowrap; }
+    .expr-row { gap:.5rem; flex-wrap: wrap; }
+    .expr-row select, .expr-row button { font-size:.85rem; }
+    .expr-row .form-select{ min-width: 9rem; }
+  </style>
+</head>
+<body>
+
+
+  
+
+  <!-- C) PER-PRODUCT TAX BREAKDOWN -->
+  <div class="mt-5">
+    <h4 class="fw-bold text-primary mb-3"><i class="bi bi-receipt-cutoff me-2"></i>Per-Product Monthly (excludes neutral orders)</h4>
+
+    <form class="row g-2 align-items-end mb-3" method="get" action="/shareholders">
+      <!-- carry summary & volume filters forward -->
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="start" value="{{ start_date }}">
+      <input type="hidden" name="end" value="{{ end_date }}">
+      <input type="hidden" name="volume_period" value="{{ volume_period or 'all' }}">
+      <input type="hidden" name="volume_start" value="{{ volume_start or '' }}">
+      <input type="hidden" name="volume_end" value="{{ volume_end or '' }}">
+
+      <div class="col-md-4">
+        <label class="form-label">Products (choose one or more)</label>
+        <select class="form-select" name="tax_product" id="taxProducts" multiple size="4">
+          {% for p in tax_all_products %}
+            <option value="{{ p }}" {% if p in (tax_selected_products or []) %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Hold Ctrl/Cmd to select multiple. Use “All” via <code>?tax_product=all</code></div>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Filter By</label>
+        <select class="form-select" id="taxPeriodKind" onchange="toggleTaxPeriods()">
+          <option value="month" {% if tax_period_kind=='month' %}selected{% endif %}>Month</option>
+          <option value="custom" {% if tax_period_kind=='custom' %}selected{% endif %}>Custom Range</option>
+        </select>
+      </div>
+
+      <div class="col-md-3" id="taxMonthWrap">
+        <label class="form-label">Month (YYYY-MM)</label>
+        <input type="month" name="month_tax" class="form-control" value="{{ tax_month_str }}">
+      </div>
+
+      <div class="col-md-5 d-none" id="taxCustomWrap">
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label">Start</label>
+            <input type="date" name="custom_tax_start" class="form-control" value="{{ tax_start_str }}">
+          </div>
+          <div class="col">
+            <label class="form-label">End</label>
+            <input type="date" name="custom_tax_end" class="form-control" value="{{ tax_end_str }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- Optional quick overrides -->
+      <div class="col-md-2">
+        <label class="form-label">Total Tax (override)</label>
+        <input type="number" step="0.0001" name="total_tax_override" class="form-control" placeholder="e.g. 3.2000">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">GRA Tax (override)</label>
+        <input type="number" step="0.0001" name="gra_tax_override" class="form-control" placeholder="e.g. 2.9000">
+      </div>
+
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100">Apply</button>
+      </div>
+    </form>
+
+    <!-- Product blocks -->
+    <div class="row g-4">
+      {% for b in tax_breakdowns %}
+      <div class="col-12 col-lg-6">
+        <div class="cardish h-100">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="block-header">
+              <h5 class="mb-0">{{ b.product }}</h5>
+              <span class="pill">Main Volume: {{ "{:,}".format(b.volume_main) }}</span>
+              <span class="pill">Neutral Volume: {{ "{:,}".format(b.volume_neutral) }}</span>
+              <span class="pill">Neutral Returns: GH₵ {{ "%.2f"|format(b.neutral_total_returns) }}</span>
+            </div>
+
+            <!-- Edit button (data-* only) -->
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary btn-edit"
+              data-product="{{ b.product }}"
+              data-total="{{ b.rates.total_tax|default(0) }}"
+              data-gra="{{ b.rates.gra_tax|default(0) }}"
+              data-npa-life="{{ b.rates.npa_life|default(0) }}"
+              data-npa-comp="{{ b.rates.npa_component|default(0) }}"
+            >
+              <i class="bi bi-pencil-square me-1"></i>Edit Tax
+            </button>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="pill">Total Tax: {{ "%.4f"|format(b.rates.total_tax) }}</span>
+            <span class="pill">GRA: {{ "%.4f"|format(b.rates.gra_tax) }}</span>
+            <span class="pill">NPA/Life: {{ "%.4f"|format(b.rates.npa_life) }}</span>
+            <span class="pill">NPA Component: {{ "%.4f"|format(b.rates.npa_component) }}</span>
+            <span class="pill">Life Component: {{ "%.4f"|format(b.rates.life_component) }}</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table pro-table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>Line</th>
+                  <th>Tax / L</th>
+                  <th>Amount (GH₵)</th>
+                </tr>
+              </thead>
+             <tbody>
+  {% for r in b.rows %}
+  <tr>
+    <td>{{ r.label }}</td>
+    <td>{{ "%.4f"|format(r.rate) }}</td>
+    <td>{{ "{:,.2f}".format(r.amount) }}</td>
+  </tr>
+  {% endfor %}
+
+  <tr class="section-row">
+    <td>NPA Component Split</td>
+    <td colspan="2" class="text-center">
+      <span class="table-note">Calculated as (NPA Component × Share%)</span>
+    </td>
+  </tr>
+
+  {% for s in b.split_rows %}
+  <tr>
+    <td>{{ s.name }} ({{ s.percent }}%)</td>
+    <td>{{ "%.4f"|format(s.rate) }}</td>
+    <td>{{ "{:,.2f}".format(s.amount) }}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+
+            </table>
+          </div>
+
+          <div class="table-note">
+            Life Component = NPA/Life − NPA Component (also equals Total − GRA − NPA Component if values match).
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+
+<!-- Template data (safe even if charts removed) -->
+<script id="contribution-data" type="application/json">
+  {{ contributions | tojson }}
+</script>
+<script id="volume-data" type="application/json">
+  {{ volume_data | tojson }}
+</script>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Edit Tax Modal -->
+<div class="modal fade" id="taxEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="taxEditForm">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Tax Rates</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Product</label>
+            <input type="text" class="form-control" id="taxProduct" name="product" readonly>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Total Tax (per L)</label>
+              <input type="number" step="0.0001" class="form-control" id="taxTotal" name="total_tax" required>
+              <div class="d-flex align-items-center mt-2 expr-row">
+                <span class="me-2 small text-muted">Compute as:</span>
+                <select class="form-select" data-for="taxTotal" data-role="term1">
+                  <option value="">— choose —</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxTotal" data-role="op1">
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxTotal" data-role="term2">
+                  <option value="">— choose —</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxTotal" data-role="op2">
+                  <option value="">(none)</option>
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxTotal" data-role="term3">
+                  <option value="">— optional —</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="compute" data-target="taxTotal">Compute</button>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">GRA Tax (per L)</label>
+              <input type="number" step="0.0001" class="form-control" id="taxGRA" name="gra_tax" required>
+              <div class="d-flex align-items-center mt-2 expr-row">
+                <span class="me-2 small text-muted">Compute as:</span>
+                <select class="form-select" data-for="taxGRA" data-role="term1">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxGRA" data-role="op1">
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxGRA" data-role="term2">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxGRA" data-role="op2">
+                  <option value="">(none)</option>
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxGRA" data-role="term3">
+                  <option value="">— optional —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="compute" data-target="taxGRA">Compute</button>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">NPA/Life (per L)</label>
+              <input type="number" step="0.0001" class="form-control" id="taxNPALife" name="npa_life_tax" required>
+              <div class="d-flex align-items-center mt-2 expr-row">
+                <span class="me-2 small text-muted">Compute as:</span>
+                <select class="form-select" data-for="taxNPALife" data-role="term1">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxNPALife" data-role="op1">
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxNPALife" data-role="term2">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxNPALife" data-role="op2">
+                  <option value="">(none)</option>
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxNPALife" data-role="term3">
+                  <option value="">— optional —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPAComp">NPA Component</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="compute" data-target="taxNPALife">Compute</button>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">NPA Component (per L)</label>
+              <input type="number" step="0.0001" class="form-control" id="taxNPAComp" name="npa_component_tax" required>
+              <div class="d-flex align-items-center mt-2 expr-row">
+                <span class="me-2 small text-muted">Compute as:</span>
+                <select class="form-select" data-for="taxNPAComp" data-role="term1">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxNPAComp" data-role="op1">
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxNPAComp" data-role="term2">
+                  <option value="">— choose —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                </select>
+                <select class="form-select w-auto" data-for="taxNPAComp" data-role="op2">
+                  <option value="">(none)</option>
+                  <option value="+">+</option>
+                  <option value="-">−</option>
+                </select>
+                <select class="form-select" data-for="taxNPAComp" data-role="term3">
+                  <option value="">— optional —</option>
+                  <option value="taxTotal">Total Tax</option>
+                  <option value="taxGRA">GRA</option>
+                  <option value="taxNPALife">NPA/Life</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="compute" data-target="taxNPAComp">Compute</button>
+              </div>
+              <div class="form-text">Shareholder splits (35/35/30) are based on this field.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save & Refresh</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== Guarded Charts (only run if canvas exists) =====
+  const returnsCanvas = document.getElementById('returnsChart');
+  const volumeCanvas  = document.getElementById('volumeChart');
+  const pieRetCanvas  = document.getElementById('pieChartReturns');
+  const pieVolCanvas  = document.getElementById('pieChartVolume');
+
+  const chartColors = ['#0d6efd', '#20c997', '#ffc107', '#fd7e14', '#6f42c1', '#d63384', '#198754'];
+
+  if (returnsCanvas) {
+    const contributionData = JSON.parse(document.getElementById('contribution-data').textContent || "{}");
+    const labels = Object.keys(contributionData);
+    const returnsValues = labels.map(n => (contributionData[n]?.returns) || 0);
+    new Chart(returnsCanvas.getContext('2d'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Returns (GH₵)', data: returnsValues, backgroundColor: chartColors }] },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  if (volumeCanvas || pieVolCanvas) {
+    const volumeData = JSON.parse(document.getElementById('volume-data').textContent || "{}");
+    const volumeLabels = Object.keys(volumeData);
+    const volumeValues = volumeLabels.map(n => volumeData[n] || 0);
+
+    if (volumeCanvas) {
+      new Chart(volumeCanvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels: volumeLabels, datasets: [{ label: 'Volume Traded (Quantity)', data: volumeValues, backgroundColor: chartColors }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    if (pieVolCanvas) {
+      const totalVolume = volumeValues.reduce((a,b)=>a+b,0);
+      new Chart(pieVolCanvas.getContext('2d'), {
+        type: 'pie',
+        data: { labels: volumeLabels, datasets: [{ data: volumeValues, backgroundColor: chartColors }] },
+        options: { responsive: true, plugins: { tooltip: { callbacks: { label: c => {
+          const v = c.parsed; const pct = totalVolume ? ((v/totalVolume)*100).toFixed(2) : '0.00';
+          return `${c.label}: ${v} units (${pct}%)`;
+        }}}}}
+      });
+    }
+  }
+
+  if (pieRetCanvas) {
+    const contributionData = JSON.parse(document.getElementById('contribution-data').textContent || "{}");
+    const labels = Object.keys(contributionData);
+    const returnsValues = labels.map(n => (contributionData[n]?.returns) || 0);
+    const totalReturns = returnsValues.reduce((a,b)=>a+b,0);
+    new Chart(pieRetCanvas.getContext('2d'), {
+      type: 'pie',
+      data: { labels, datasets: [{ data: returnsValues, backgroundColor: chartColors }] },
+      options: { responsive: true, plugins: { tooltip: { callbacks: { label: c => {
+        const v = c.parsed; const pct = totalReturns ? ((v/totalReturns)*100).toFixed(2) : '0.00';
+        return `${c.label}: GH₵ ${v.toFixed(2)} (${pct}%)`;
+      }}}}}
+    });
+  }
+
+  // ===== Toggles =====
+  function toggleDateRange(val) {
+    const s = document.getElementById('start');
+    const e = document.getElementById('end');
+    if (!s || !e) return;
+    s.disabled = (val !== 'custom');
+    e.disabled = (val !== 'custom');
+  }
+  function toggleVolumeDateRange(val) {
+    const vs = document.getElementById('volume_start');
+    const ve = document.getElementById('volume_end');
+    if (!vs || !ve) return;
+    vs.disabled = (val !== 'custom');
+    ve.disabled = (val !== 'custom');
+  }
+  function toggleTaxPeriods() {
+    const kind = document.getElementById('taxPeriodKind')?.value;
+    const mWrap = document.getElementById('taxMonthWrap');
+    const cWrap = document.getElementById('taxCustomWrap');
+    if (!mWrap || !cWrap || !kind) return;
+    mWrap.classList.toggle('d-none', kind !== 'month');
+    cWrap.classList.toggle('d-none', kind !== 'custom');
+  }
+
+  // ===== Edit Modal =====
+  let taxEditModal;
+  function openTaxEdit(product, totalTax, graTax, npaLife, npaComp) {
+    const el = document.getElementById('taxEditModal');
+    if (!taxEditModal) taxEditModal = new bootstrap.Modal(el);
+    document.getElementById('taxProduct').value = product || '';
+    document.getElementById('taxTotal').value = Number.isFinite(totalTax) ? totalTax : '';
+    document.getElementById('taxGRA').value = Number.isFinite(graTax) ? graTax : '';
+    document.getElementById('taxNPALife').value = Number.isFinite(npaLife) ? npaLife : '';
+    document.getElementById('taxNPAComp').value = Number.isFinite(npaComp) ? npaComp : '';
+    taxEditModal.show();
+  }
+
+  // Open modal from any "Edit Tax" button
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-edit');
+    if (!btn) return;
+    const product = btn.dataset.product || '';
+    const total   = parseFloat(btn.dataset.total);
+    const gra     = parseFloat(btn.dataset.gra);
+    const npaLife = parseFloat(btn.dataset.npaLife);
+    const npaComp = parseFloat(btn.dataset.npaComp);
+    openTaxEdit(
+      product,
+      Number.isNaN(total) ? 0 : total,
+      Number.isNaN(gra) ? 0 : gra,
+      Number.isNaN(npaLife) ? 0 : npaLife,
+      Number.isNaN(npaComp) ? 0 : npaComp
+    );
+  });
+
+  // ===== Expression helpers =====
+  function valOf(id){
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? 0 : v;
+  }
+  function computeInto(targetId){
+    const q = (role) => document.querySelector(`select[data-for="${targetId}"][data-role="${role}"]`);
+    const t1 = q('term1')?.value;
+    const t2 = q('term2')?.value;
+    const t3 = q('term3')?.value;
+    const op1 = q('op1')?.value || '+';
+    const op2 = q('op2')?.value || '';
+    if(!t1 || !t2){ return; }
+    let result = op1 === '-' ? (valOf(t1) - valOf(t2)) : (valOf(t1) + valOf(t2));
+    if(op2 && t3){ result = op2 === '-' ? (result - valOf(t3)) : (result + valOf(t3)); }
+    document.getElementById(targetId).value = Number(result).toFixed(4);
+  }
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-action="compute"]');
+    if(!btn) return;
+    computeInto(btn.getAttribute('data-target'));
+  });
+
+  // ===== Save to /shareholders/shared_tax_update =====
+  document.getElementById('taxEditForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = Object.fromEntries(fd.entries());
+    try {
+      const res = await fetch('/shareholders/shared_tax_update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert('Failed to save: ' + (data.error || res.statusText));
+        return;
+      }
+      taxEditModal.hide();
+      window.location.reload();
+    } catch (err) {
+      alert('Network error: ' + err.message);
+    }
+  });
+
+  // ===== Init =====
+  document.addEventListener("DOMContentLoaded", function () {
+    const periodSel = document.getElementById('period');
+    if (periodSel) toggleDateRange(periodSel.value);
+    const volPeriodSel = document.getElementById('volume_period');
+    if (volPeriodSel) toggleVolumeDateRange(volPeriodSel.value);
+    toggleTaxPeriods();
+  });
+</script>
+</body>
+</html>

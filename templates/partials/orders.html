@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orders</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Select2 -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <!-- jQuery + Select2 + Bootstrap Bundle -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    .card-header small { color:#6c757d; }
+    .formula-chip { display:inline-block; padding:.2rem .6rem; border-radius:999px; background:#f1f3f5; font-size:.8rem; }
+    .calc-note { font-size:.8rem; color:#6c757d; }
+    .dimmed { opacity:.55; pointer-events:none; }
+    .btn-toggle-group .btn { min-width: 92px; }
+    .metric-box { background:#f8f9fa; border-radius:.5rem; padding:.5rem .75rem; }
+    .metric-heading { font-size:.85rem; color:#6c757d; margin-bottom:.2rem; }
+    .metric-value { font-weight:600; }
+    .actions-grid { display:grid; grid-template-columns: 1fr; gap:.5rem; }
+    @media (min-width: 576px){ .actions-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 576px){
+      .form-label, .btn { font-size:.95rem; }
+      .card-header .btn { width:100%; }
+    }
+  </style>
+</head>
+
+<body class="p-2 p-sm-3">
+<h4 class="mb-3">Pending Orders</h4>
+<div id="order-alert"></div>
+
+{% if orders %}
+  {% for order in orders %}
+    {% set _raw_mode = (order.order_type or 'combo') %}
+    {% set mode = _raw_mode.replace('-', '_') %}
+    {% set mode_label = 'S-BDC' if mode=='s_bdc' else ('S-Tax' if mode=='s_tax' else 'Combo') %}
+    {% set filled = order.total_debt and order.returns %}
+
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <a class="d-inline-flex align-items-center text-decoration-none" href="javascript:void(0)">
+            {% if order.client_image_url %}
+              <img src="{{ order.client_image_url }}" alt="Client Image" class="rounded-circle me-2" width="32" height="32">
+            {% else %}
+              <div class="rounded-circle bg-secondary me-2" style="width:32px; height:32px;"></div>
+            {% endif %}
+            <strong>{{ order.client_name or 'Client' }} ({{ order.client_id }})</strong>
+          </a>
+          <small>• {{ order.product }} • {{ order.quantity }} L • {{ order.date or '' }}</small>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
+          View Details
+        </button>
+      </div>
+
+      <div class="card-body">
+        <form method="POST"
+              action="/orders/update/{{ order._id }}"
+              class="row g-3 order-update-form"
+              novalidate
+              data-id="{{ order._id }}"
+              data-qty="{{ order.quantity|float }}"
+              data-client="{{ order.client_name or 'Client' }}"
+              data-clientid="{{ order.client_id }}"
+              data-product="{{ order.product or '' }}"
+              data-vehicle="{{ order.vehicle_number or '' }}"
+              data-driver="{{ order.driver_name or '' }}"
+              data-driverphone="{{ order.driver_phone or '' }}"
+              data-region="{{ order.region or '' }}"
+              data-date="{{ order.date or '' }}">
+
+          <!-- Order Type (read-only) -->
+          <div class="col-12">
+            <label class="form-label mb-1">Order Type</label>
+            <div>
+              <span class="badge
+                {% if mode=='s_bdc' %} bg-primary
+                {% elif mode=='s_tax' %} bg-warning text-dark
+                {% else %} bg-success
+                {% endif %}">
+                {{ mode_label }}
+              </span>
+              <small class="calc-note ms-2">
+                {% if mode=='s_tax' %}Debt = S-Tax × Q
+                {% elif mode=='s_bdc' %}Debt = S-BDC × Q
+                {% else %}Debt = (S-BDC + S-Tax) × Q
+                {% endif %}
+              </small>
+            </div>
+            <input type="hidden" name="order_type" class="order_type" value="{{ mode }}">
+          </div>
+
+          <!-- Shareholder -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">Shareholder</label>
+            <select name="shareholder" class="form-select" required>
+              <option value="">Select Shareholder</option>
+              <option value="Rex"    {% if order.shareholder == 'Rex' %}selected{% endif %}>Rex</option>
+              <option value="Simon"  {% if order.shareholder == 'Simon' %}selected{% endif %}>Simon</option>
+              <option value="Paul"   {% if order.shareholder == 'Paul' %}selected{% endif %}>Paul</option>
+              <option value="Neutral"{% if order.shareholder == 'Neutral' %}selected{% endif %}>Neutral</option>
+            </select>
+          </div>
+
+          <!-- OMC -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">OMC</label>
+            <select name="omc" class="form-control omc-select"><!-- no hardcoded required -->
+              <option value="">Select OMC</option>
+              {% for o in omcs %}
+                <option value="{{ o.name }}" data-rep-phone="{{ o.rep_phone or '' }}" {% if order.omc == o.name %}selected{% endif %}>
+                  {{ o.name }}{% if o.rep_phone %} — {{ o.rep_phone }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- BDC -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">BDC</label>
+            <select name="bdc" class="form-control bdc-select"><!-- no hardcoded required -->
+              <option value="">Select BDC</option>
+              {% for b in bdcs %}
+                <option value="{{ b._id }}"
+                        data-bdc-name="{{ b.name }}"
+                        data-rep-phone="{{ b.rep_phone or b.phone or '' }}"
+                        {% if (order.bdc_id|string) == (b._id|string) %}selected{% endif %}>
+                  {{ b.name }}{% if b.rep_phone or b.phone %} — {{ b.rep_phone or b.phone }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Payment -->
+          <div class="col-12" data-payment-section>
+            <label class="form-label">Payment Details</label>
+            <div class="row g-2 payment-type-group align-items-end">
+              <div class="col-12 col-sm-6 col-lg-4">
+                <select class="form-select payment-type-select" name="payment_type">
+                  <option value="">Select Payment Type (Amount to Pay to BDC )</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Credit">Credit</option>
+                  <option value="From Account">From Account</option>
+                </select>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-4 d-none payment-amount-wrapper">
+                <input type="number" step="0.01" name="payment_amount" class="form-control" placeholder="Auto: qty × P-BDC" />
+                <div class="form-text payment-amount-view text-muted"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Depot -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">DEPOT</label>
+            <input type="text" name="depot" class="form-control depot_input" value="{{ order.depot or '' }}" required>
+          </div>
+
+          <!-- Prices -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label d-flex justify-content-between align-items-center flex-wrap gap-2">
+              P-BDC <span class="calc-note">For price margin & payments</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary fetch-price-btn" data-product="{{ order.product }}" title="Auto-fill P/S Price">Use Existing Price</button>
+            </label>
+            <input type="number" step="0.01" name="p_bdc_omc" class="form-control p_bdc_input" value="{{ order.p_bdc_omc or '' }}">
+          </div>
+
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">S-BDC <span class="calc-note">Used in S-BDC/Combo debt</span></label>
+            <input type="number" step="0.01" name="s_bdc_omc" class="form-control s_bdc_input" value="{{ order.s_bdc_omc or '' }}">
+          </div>
+
+          <!-- Taxes -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">P-Tax <span class="calc-note">For tax margin only</span></label>
+            <input type="number" step="0.01" name="p_tax" class="form-control p_tax_input" value="{{ order.p_tax or '' }}">
+          </div>
+
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">S-Tax <span class="calc-note">Used in S-Tax/Combo debt</span></label>
+            <input type="number" step="0.01" name="s_tax" class="form-control s_tax_input" value="{{ order.s_tax or '' }}">
+          </div>
+
+          <!-- Derived -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Price Margin (per L)</div>
+              <input type="hidden" name="margin" class="margin_input" value="{{ order.margin or '' }}">
+              <input type="text" class="form-control margin_view" value="" readonly>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Tax Margin (per L)</div>
+              <input type="hidden" name="margin_tax" class="margin_tax_input" value="{{ order.margin_tax or '' }}">
+              <input type="text" class="form-control margin_tax_view" value="" readonly>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Total Debt</div>
+              <input type="hidden" name="total_debt" class="total_debt_input" value="{{ order.total_debt or '' }}">
+              <input type="text" class="form-control total_debt_view" value="" readonly>
+              <div class="mt-1">
+                <span class="formula-chip debt-formula-chip">Formula: —</span><br>
+                <small class="calc-note debt-preview">Q = {{ order.quantity|float }} → —</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- RETURNS -->
+          <div class="col-12">
+            <div class="metric-box">
+              <div class="metric-heading">Returns</div>
+              <div class="row g-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Price Margin × Q</label>
+                  <div class="metric-value">GHS <span class="returns_sbdc_display">0.00</span></div>
+                  <input type="hidden" name="returns_sbdc" class="returns_sbdc_input" value="">
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Tax Margin × Q</label>
+                  <div class="metric-value">GHS <span class="returns_stax_display">0.00</span></div>
+                  <input type="hidden" name="returns_stax" class="returns_stax_input" value="">
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Total Returns ( (Price + Tax) × Q )</label>
+                  <div class="metric-value">GHS <span class="returns_total_display">{{ order.returns or '0.00' }}</span></div>
+                  <input type="hidden" name="returns_total" class="returns_total_input" value="">
+                  <input type="hidden" name="returns" class="returns_input" value="{{ order.returns or '' }}">
+                </div>
+              </div>
+              <div class="mt-1">
+                <span class="formula-chip returns-formula-chip">Formula: (Price Margin + Tax Margin) × Q</span>
+                <br><small class="calc-note returns-preview"></small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Due Date (past dates blocked) -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <label class="form-label">Due Date (for client to finish Payments for this order)</label>
+            <input type="date"
+                   name="due_date"
+                   class="form-control due_date_input"
+                   value="{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '' }}">
+            <div class="form-text text-muted">Only today or future dates are allowed.</div>
+          </div>
+
+          <!-- ACTIONS -->
+          <div class="col-12">
+            <div class="actions-grid">
+              <button type="button" class="btn btn-outline-success send-omc-btn">Send to OMC (WhatsApp)</button>
+              <button type="button" class="btn btn-outline-success send-bdc-btn">Send to BDC (WhatsApp)</button>
+              <button type="submit" class="btn btn-{{ 'success' if filled else 'primary' }}">
+                {{ 'Approve & Confirm' if filled else 'Confirm' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- View Details Modal -->
+    <div class="modal fade" id="detailsModal{{ order._id }}" tabindex="-1"
+         aria-labelledby="detailsModalLabel{{ order._id }}" aria-hidden="true"
+         data-product="{{ order.product or '' }}"
+         data-vehicle="{{ order.vehicle_number or '' }}"
+         data-driver="{{ order.driver_name or '' }}"
+         data-driverphone="{{ order.driver_phone or '' }}"
+         data-quantity="{{ order.quantity or '' }}"
+         data-region="{{ order.region or '' }}"
+         data-depot="{{ order.depot or '' }}">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="detailsModalLabel{{ order._id }}">Order Details</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <ul class="list-group">
+              <li class="list-group-item"><strong>Order Type:</strong> {{ mode_label }}</li>
+              <li class="list-group-item"><strong>Product:</strong> {{ order.product or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Vehicle Number:</strong> {{ order.vehicle_number or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Driver's Name:</strong> {{ order.driver_name or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Driver's Phone:</strong> {{ order.driver_phone or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Quantity:</strong> {{ order.quantity or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Region:</strong> {{ order.region or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Depot:</strong> {{ order.depot or 'N/A' }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="alert alert-info">No pending orders to review.</div>
+{% endif %}
+
+<script>
+  // ---------- Helpers ----------
+  function toNum(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+  function toFixed2(n){ n = Number(n); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
+  function fmt(n){ n = Number(n); return Number.isFinite(n) ? n.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'; }
+
+  function normalizePhone(raw){
+    if(!raw) return "";
+    const digits = String(raw).replace(/\D/g,'');
+    if(digits.startsWith('0')) return '233' + digits.slice(1);
+    if(digits.startsWith('233')) return digits;
+    if(digits.startsWith('27') || digits.startsWith('234') || digits.startsWith('44') || digits.startsWith('1')) return digits;
+    return digits;
+  }
+  function openWhatsApp(phone, message){
+    if(!phone){ alert("No phone number available."); return; }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  }
+
+  // Build WhatsApp message
+  function buildMessage($form, includeDepot=false){
+    const id     = $form.data('id');
+    const $modal = $(`#detailsModal${id}`);
+    const product = $modal.data('product')      || $form.data('product') || '';
+    const vehicle = $modal.data('vehicle')      || $form.data('vehicle') || '';
+    const driver  = $modal.data('driver')       || $form.data('driver')  || '';
+    const dphone  = $modal.data('driverphone')  || $form.data('driverphone') || '';
+    const qty     = $modal.data('quantity')     || $form.data('qty') || '';
+    const region  = $modal.data('region')       || $form.data('region') || '';
+    const depot   = $form.find('.depot_input').val() || $modal.data('depot') || '';
+    const omcName = $form.find('.omc-select').val() || '';
+    const $bdcSel = $form.find('.bdc-select option:selected');
+    const bdcName = ($bdcSel.data('bdc-name') || '').toString().trim() || ($bdcSel.text() || '').trim();
+
+    const lines = [
+      'ORDER DETAILS',
+      `OMC: ${omcName || 'N/A'}`,
+      `BDC: ${bdcName || 'N/A'}`,
+      `Product: ${product}`,
+      `Quantity: ${qty} L`,
+      `Region: ${region}`,
+      `Vehicle: ${vehicle}`,
+      `Driver: ${driver}${dphone ? ' ('+dphone+')' : ''}`
+    ];
+    if (includeDepot){ lines.push(`Depot: ${depot}`); }
+    return lines.join('\n');
+  }
+
+  // ---- Helpers to enable/disable partner selects (with Select2) ----
+  function setPartnerState($sel, opts){
+    const disabled = !!opts.disabled;
+    const required = !!opts.required;
+    const clear    = !!opts.clear;
+    const dimClass = opts.dimClass || 'dimmed';
+
+    if (clear) { $sel.val(''); }
+    const isS2 = $sel.hasClass('select2-hidden-accessible');
+    $sel.prop('disabled', disabled).prop('required', required);
+    if (isS2){ $sel.trigger('change.select2'); } else { $sel.trigger('change'); }
+
+    if (disabled){ $sel.addClass(dimClass); } else { $sel.removeClass(dimClass); }
+  }
+
+  function setBDCState($form, disabled){
+    const $bdc = $form.find('.bdc-select');
+    setPartnerState($bdc, {
+      disabled: !!disabled,
+      required: !disabled,   // required only when enabled
+      clear: !!disabled,
+      dimClass: 'dimmed'
+    });
+  }
+
+  function setOMCState($form, disabled){
+    const $omc = $form.find('.omc-select');
+    setPartnerState($omc, {
+      disabled: !!disabled,
+      required: !disabled,   // required only when enabled
+      clear: !!disabled,
+      dimClass: 'dimmed'
+    });
+  }
+
+  // --- Lock/enable inputs by mode (AND clear disabled ones) ---
+  function setModeUI($form, mode){
+    $form.find('.order_type').val(mode);
+
+    const $p  = $form.find('.p_bdc_input');
+    const $s  = $form.find('.s_bdc_input');
+    const $pt = $form.find('.p_tax_input');
+    const $st = $form.find('.s_tax_input');
+
+    const on  = ($el) => { $el.prop('disabled', false).removeClass('dimmed'); };
+    const off = ($el) => { $el.val('').prop('disabled', true).addClass('dimmed'); };
+
+    [$p,$s,$pt,$st].forEach($el => $el.prop('required', false));
+
+    if (mode === 's_tax'){
+      // Only tax side + OMC active
+      off($p); off($s); on($pt); on($st);
+      $st.prop('required', true);
+
+      setBDCState($form, true);   // BDC disabled & cleared
+      setOMCState($form, false);  // OMC enabled & required
+    } else if (mode === 's_bdc'){
+      // Only price side + BDC active
+      on($p); on($s); off($pt); off($st);
+      $s.prop('required', true);
+
+      setOMCState($form, true);   // OMC disabled & cleared
+      setBDCState($form, false);  // BDC enabled & required
+    } else { // combo
+      on($p); on($s); on($pt); on($st);
+      $s.prop('required', true); $st.prop('required', true);
+
+      setOMCState($form, false);
+      setBDCState($form, false);
+    }
+    setPaymentUI($form, mode);
+  }
+
+  function computeDebtByMode(mode, s, sTax, q){
+    let amount = 0, label = "—", preview = "—";
+    if (mode === 'combo'){
+      const perL = (s > 0 ? s : 0) + (sTax > 0 ? sTax : 0);
+      amount = perL * q; label = "(S-BDC + S-Tax) × Q";
+      preview = `Q = ${q.toLocaleString()} → (${toFixed2(s)} + ${toFixed2(sTax)}) × ${q.toLocaleString()} = ${fmt(amount)}`;
+    } else if (mode === 's_bdc'){
+      amount = s * q; label = "S-BDC × Q";
+      preview = `Q = ${q.toLocaleString()} → ${toFixed2(s)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+    } else if (mode === 's_tax'){
+      amount = sTax * q; label = "S-Tax × Q";
+      preview = `Q = ${q.toLocaleString()} → ${toFixed2(sTax)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+    }
+    return { amount, label, preview };
+  }
+
+  function computeFormValues($form){
+    const p    = toNum($form.find('.p_bdc_input').val());
+    const s    = toNum($form.find('.s_bdc_input').val());
+    const pTax = toNum($form.find('.p_tax_input').val());
+    const sTax = toNum($form.find('.s_tax_input').val());
+    const q    = toNum($form.data('qty'));
+    const mode = ($form.find('.order_type').val() || 'combo');
+
+    const marginPrice = (s - p);
+    const marginTax   = (sTax - pTax);
+
+    const returnsPrice = marginPrice * q;
+    const returnsTax   = marginTax * q;
+    const returnsTotal = returnsPrice + returnsTax;
+
+    const debtObj = computeDebtByMode(mode, s, sTax, q);
+
+    $form.find('.margin_input').val(toFixed2(marginPrice));
+    $form.find('.margin_tax_input').val(toFixed2(marginTax));
+    $form.find('.returns_sbdc_input').val(toFixed2(returnsPrice));
+    $form.find('.returns_stax_input').val(toFixed2(returnsTax));
+    $form.find('.returns_total_input').val(toFixed2(returnsTotal));
+    $form.find('.returns_input').val(toFixed2(returnsTotal));
+    $form.find('.total_debt_input').val(toFixed2(debtObj.amount));
+
+    $form.find('.margin_view').val(fmt(marginPrice));
+    $form.find('.margin_tax_view').val(fmt(marginTax));
+    $form.find('.returns_sbdc_display').text(fmt(returnsPrice));
+    $form.find('.returns_stax_display').text(fmt(returnsTax));
+    $form.find('.returns_total_display').text(fmt(returnsTotal));
+    $form.find('.total_debt_view').val(fmt(debtObj.amount));
+
+    $form.find('.debt-formula-chip').text(`Formula: ${debtObj.label}`);
+    $form.find('.debt-preview').text(debtObj.preview);
+
+    const pricePart = toFixed2(marginPrice);
+    const taxPart   = toFixed2(marginTax);
+    $form.find('.returns-formula-chip').text(`Formula: (${pricePart} + ${taxPart}) × Q`);
+    $form.find('.returns-preview').text(`Q = ${q.toLocaleString()} → (${pricePart} + ${taxPart}) × ${q.toLocaleString()} = ${fmt(returnsTotal)}`);
+
+    // Payment helper
+    const payType = ($form.find('.payment-type-select').val() || '').toLowerCase();
+    if (payType === 'cash' || payType === 'from account' || payType === 'credit') {
+      const payAmt = q * p;
+      $form.find('input[name="payment_amount"]').val(toFixed2(payAmt));
+      $form.find('.payment-amount-view').text(`= ${fmt(payAmt)} GHS`);
+      $form.find('.payment-amount-wrapper').removeClass('d-none');
+    } else {
+      $form.find('.payment-amount-view').text('');
+    }
+  }
+
+  function setPaymentUI($form, mode){
+    const $typeSel = $form.find('.payment-type-select');
+    const $amtWrap = $form.find('.payment-amount-wrapper');
+    const $amtInp  = $form.find('input[name="payment_amount"]');
+
+    if (mode === 's_tax'){
+      $typeSel.val('').prop('disabled', true).prop('required', false).addClass('dimmed');
+      $amtInp.val('').prop('disabled', true).prop('required', false);
+      $amtWrap.addClass('d-none');
+      $form.find('.payment-amount-view').text('');
+    } else {
+      $typeSel.prop('disabled', false).removeClass('dimmed');
+      $typeSel.prop('required', false);
+      $amtInp.prop('required', false).prop('disabled', false);
+      const hasType = ($typeSel.val() || '').length > 0;
+      $amtWrap.toggleClass('d-none', !hasType);
+    }
+  }
+
+  // Recalc events
+  $(document).on('input', '.p_bdc_input, .s_bdc_input, .p_tax_input, .s_tax_input', function(){
+    const $form = $(this).closest('form');
+    computeFormValues($form);
+  });
+  $(document).on('change', '.payment-type-select', function () {
+    const $form = $(this).closest('form');
+    setPaymentUI($form, $form.find('.order_type').val() || 'combo');
+    computeFormValues($form);
+  });
+
+  // --- Autofill strictly by order type rules ---
+  $(document).on('click', '.fetch-price-btn', function () {
+    const btn = $(this);
+    const product = btn.data('product');
+    const $form = btn.closest('form');
+    const mode = ($form.find('.order_type').val() || 'combo');
+
+    $.get('/orders/get_product_price', { name: product })
+      .done(function (res) {
+        const $p  = $form.find('.p_bdc_input');
+        const $s  = $form.find('.s_bdc_input');
+        const $pt = $form.find('.p_tax_input');
+        const $st = $form.find('.s_tax_input');
+
+        if (mode === 's_tax') {
+          if (res.p_tax != null) $pt.val(res.p_tax);
+          if (res.s_tax != null) $st.val(res.s_tax);
+        } else if (mode === 's_bdc') {
+          if (res.p_price != null) $p.val(res.p_price);
+          if (res.s_price != null) $s.val(res.s_price);
+        } else { // combo
+          if (res.p_price != null) $p.val(res.p_price);
+          if (res.s_price != null) $s.val(res.s_price);
+          if (res.p_tax   != null) $pt.val(res.p_tax);
+          if (res.s_tax   != null) $st.val(res.s_tax);
+        }
+        computeFormValues($form);
+      })
+      .fail(function (xhr) {
+        const err = xhr.responseJSON?.error || 'Failed to fetch price';
+        alert(err);
+      });
+  });
+
+  // ---- DUE DATE: block past dates (allow today or future only) ----
+  function localISODate(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function applyDueDateGuards(){
+    const todayStr = localISODate(new Date());
+    $('.due_date_input').each(function(){
+      this.min = todayStr;
+
+      if (this.value && this.value < todayStr){
+        this.value = todayStr;
+      }
+
+      this.addEventListener('input', function(){
+        if (this.value && this.value < todayStr){
+          this.setCustomValidity('Due date cannot be in the past. Choose today or a future date.');
+        } else {
+          this.setCustomValidity('');
+        }
+      });
+    });
+  }
+
+  // Init select2 + initial compute & UI lock based on order_type
+  $(document).ready(function () {
+    $('.omc-select, .bdc-select').each(function () {
+      const $modal = $(this).closest('.modal');
+      $(this).select2({
+        placeholder: "Select or search...",
+        dropdownParent: $modal.length ? $modal : $(document.body),
+        width: '100%'
+      });
+    });
+
+    $('.order-update-form').each(function(){
+      const $form = $(this);
+      const mode = $form.find('.order_type').val() || 'combo';
+      setModeUI($form, mode);     // locks + clears disabled fields per mode (Select2-safe)
+      computeFormValues($form);   // derived numbers
+    });
+
+    applyDueDateGuards();
+  });
+
+  // Submit (Confirm) + final due date check
+  $(document).on('submit', '.order-update-form', function (e) {
+    const $form = $(this);
+    const $due = $form.find('.due_date_input');
+    if ($due.length){
+      const todayStr = localISODate(new Date());
+      const val = $due.val();
+      if (val && val < todayStr){
+        e.preventDefault();
+        $due[0].setCustomValidity('Due date cannot be in the past. Choose today or a future date.');
+        $due[0].reportValidity();
+        return;
+      } else {
+        $due[0].setCustomValidity('');
+      }
+    }
+
+    e.preventDefault();
+    $.post(`/orders/update/${$form.data('id')}`, $form.serialize())
+      .done(function (res) {
+        if (res.approved && res.invoice_url) {
+          const a = document.createElement('a');
+          a.href = res.invoice_url; a.target = '_blank'; a.rel = 'noopener';
+          document.body.appendChild(a); a.click(); a.remove();
+          if (typeof loadContent === 'function') setTimeout(() => loadContent('/orders','Review Orders'), 150);
+          else setTimeout(() => location.reload(), 150);
+          return;
+        }
+        $('#order-alert').html(`<div class="alert alert-success">${res.message}</div>`);
+        setTimeout(() => (typeof loadContent === 'function' ? loadContent('/orders','Review Orders') : location.reload()), 800);
+      })
+      .fail(function (xhr) {
+        const err = xhr.responseJSON?.error || 'Failed to update order.';
+        $('#order-alert').html(`<div class="alert alert-danger">${err}</div>`);
+      });
+  });
+
+  // WhatsApp buttons
+  $(document).on('click', '.send-omc-btn', function(){
+    const $form = $(this).closest('form');
+    const $omcSel = $form.find('.omc-select');
+    if ($omcSel.prop('disabled')) { alert('OMC is not required for this order type.'); return; }
+    const $omcOpt = $omcSel.find('option:selected');
+    const phoneRaw = $omcOpt.data('rep-phone') || '';
+    const phone = normalizePhone(phoneRaw);
+    if(!$omcOpt.val()){ alert('Select an OMC first.'); return; }
+    if(!phone){ alert('OMC rep phone number is missing for this OMC.'); return; }
+    const msg = buildMessage($form, false);
+    openWhatsApp(phone, msg);
+  });
+  $(document).on('click', '.send-bdc-btn', function(){
+    const $form = $(this).closest('form');
+    const $bdcSel = $form.find('.bdc-select');
+    if ($bdcSel.prop('disabled')) { alert('BDC is not required for this order type.'); return; }
+    const $bdcOpt = $bdcSel.find('option:selected');
+    const phoneRaw = $bdcOpt.data('rep-phone') || '';
+    const phone = normalizePhone(phoneRaw);
+    if(!$bdcOpt.val()){ alert('Select a BDC first.'); return; }
+    if(!phone){ alert('BDC rep phone number is missing for this BDC.'); return; }
+    const msg = buildMessage($form, true);
+    openWhatsApp(phone, msg);
+  });
+</script>
+</body>
+</html>

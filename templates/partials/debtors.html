@@ -1,0 +1,136 @@
+<div class="container py-4">
+  <!-- 🔝 Top Bar: Client Jump + Filter -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+    <div>
+      <h4 class="mb-2"><i class="fas fa-users text-primary me-2"></i>Clients Overview</h4>
+      <div class="d-flex flex-wrap gap-2">
+        {% for client in client_data %}
+          <a href="#client-{{ loop.index }}" class="btn btn-outline-primary btn-sm shadow-sm">
+            <i class="fas fa-user"></i> {{ client.name.split(' ')[0] }} ({{ client.client_id }})
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 🔽 Filter -->
+    <div class="mt-3 mt-md-0">
+      <label for="debtSort" class="form-label mb-1 fw-semibold"><i class="fas fa-filter me-1"></i>Sort by Debt:</label>
+      <select id="debtSort" class="form-select form-select-sm shadow-sm">
+        <option value="high">High ➝ Low</option>
+        <option value="low">Low ➝ High</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 🧾 Client Cards -->
+  <div id="clientsContainer">
+    {% for client in client_data %}
+      <div id="client-{{ loop.index }}" class="client-card card mb-5 shadow-sm"
+           data-name="{{ client.name | lower }}"
+           data-id="{{ client.client_id | lower }}"
+           data-debt="{{ client.total_debt }}">
+        <div class="card-body">
+          <h5 class="card-title"><i class="fas fa-user-circle text-secondary me-2"></i>{{ client.name }} <small class="text-muted">({{ client.client_id }})</small></h5>
+          <p class="mb-2">
+            <strong>Total Paid:</strong> GHS {{ client.total_paid }}<br>
+            <strong>Total Debt:</strong> GHS {{ client.total_debt }}<br>
+            <strong>Amount Left:</strong> GHS {{ client.total_debt - client.total_paid }}
+          </p>
+
+          {% if client.total_debt > 0 %}
+            <h6 class="mt-4"><i class="fas fa-balance-scale me-1 text-success"></i> Paid vs Debt</h6>
+            <div class="chart-container mb-3">
+              <canvas class="compare-chart" id="compare-chart-{{ loop.index }}"
+                      data-paid="{{ client.total_paid }}"
+                      data-left="{{ client.total_debt - client.total_paid }}"
+                      data-label="{{ client.name }} ({{ client.client_id }})"></canvas>
+            </div>
+          {% else %}
+            <div class="alert alert-warning mt-3">No debt to display comparison chart.</div>
+          {% endif %}
+
+          {% if client.payments %}
+            <h6 class="mt-4"><i class="fas fa-chart-line me-1 text-info"></i> Payment Timeline</h6>
+            <div class="chart-container mb-3">
+              <canvas id="timeline-chart-{{ loop.index }}"></canvas>
+            </div>
+          {% else %}
+            <div class="alert alert-warning mt-3">No confirmed payments available.</div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ✅ Chart Container Style -->
+<style>
+  .chart-container {
+    position: relative;
+    width: 100%;
+    height: 300px;
+  }
+  @media (max-width: 576px) {
+    .chart-container {
+      height: 250px;
+    }
+  }
+</style>
+
+<!-- ✅ Libraries -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- ✅ JSON -->
+<script id="client-data" type="application/json">
+  {{ client_data | tojson }}
+</script>
+
+<!-- ✅ Logic -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const charts = [];
+
+    // ✅ Render Charts
+    document.querySelectorAll('.compare-chart').forEach((canvas) => {
+      const paid = parseFloat(canvas.dataset.paid);
+      const left = parseFloat(canvas.dataset.left);
+      const label = canvas.dataset.label;
+
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: ['Total Paid', 'Amount Left'],
+          datasets: [{
+            label: label,
+            data: [paid, left],
+            backgroundColor: ['#198754', '#dc3545']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    });
+
+    // ✅ Sort by Debt
+    const sortSelect = document.getElementById('debtSort');
+    const container = document.getElementById('clientsContainer');
+
+    sortSelect.addEventListener('change', () => {
+      const cards = Array.from(container.querySelectorAll('.client-card'));
+
+      cards.sort((a, b) => {
+        const debtA = parseFloat(a.dataset.debt || 0);
+        const debtB = parseFloat(b.dataset.debt || 0);
+        return sortSelect.value === 'low' ? debtA - debtB : debtB - debtA;
+      });
+
+      cards.forEach(card => container.appendChild(card));
+    });
+  });
+</script>

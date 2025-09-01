@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login | ERP System</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --blue: #0f4c81;
+      --green: #1abc9c;
+      --moon: #fefcd7;
+      --primary: #0f4c81;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(270deg, var(--blue), var(--green), var(--moon), var(--green), var(--blue));
+      background-size: 1000% 1000%;
+      animation: backgroundFlow 28s ease-in-out infinite;
+    }
+
+    @keyframes backgroundFlow {
+      0% {background-position: 0% 50%;}
+      50% {background-position: 100% 50%;}
+      100% {background-position: 0% 50%;}
+    }
+
+    .login-container {
+      background: #ffffff;
+      padding: 40px 30px;
+      border-radius: 12px;
+      box-shadow: 0 12px 25px rgba(0, 0, 0, 0.3);
+      max-width: 400px;
+      width: 100%;
+      position: relative;
+      animation: fadeIn 2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {opacity: 0; transform: translateY(-30px);}
+      to {opacity: 1; transform: translateY(0);}
+    }
+
+    .login-container img.logo {
+      display: block;
+      margin: 0 auto 12px;
+      height: 60px;
+    }
+
+    .padlock {
+      display: block;
+      height: 48px;
+      margin: 0 auto 8px;
+      animation: pulse 4s infinite ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.07); }
+    }
+
+    .login-container h2 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: var(--primary);
+      font-weight: 500;
+      font-size: 24px;
+    }
+
+    .form-group {
+      position: relative;
+      margin-bottom: 25px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 10px 10px 5px;
+      border: none;
+      border-bottom: 2px solid #ccc;
+      outline: none;
+      background: transparent;
+      font-size: 16px;
+    }
+
+    .form-group label {
+      position: absolute;
+      top: 10px;
+      left: 5px;
+      color: #999;
+      font-size: 16px;
+      pointer-events: none;
+      transition: 0.3s ease all;
+    }
+
+    .form-group input:focus ~ label,
+    .form-group input:valid ~ label {
+      top: -15px;
+      font-size: 12px;
+      color: var(--primary);
+    }
+
+    .toggle-password {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .login-container button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      background-color: var(--primary);
+      color: white;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .login-container button:hover {
+      background-color: #09385f;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid white;
+      border-top: 2px solid transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .flash {
+      text-align: center;
+      color: red;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    .login-container.error {
+  border: 2px solid red;
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  50% { transform: translateX(8px); }
+  75% { transform: translateX(-6px); }
+  100% { transform: translateX(0); }
+}
+
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Company Logo" class="logo">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107664/lock-icon-png-11_qwi4vj.png" alt="Padlock Icon" class="padlock">
+    <h2>Secure Login</h2>
+
+   {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        document.querySelector('.login-container')?.classList.add('error');
+      });
+    </script>
+    {% for category, message in messages %}
+      <div class="flash">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+
+    <form method="POST" action="/" onsubmit="return showSpinner()">
+      <div class="form-group">
+        <input type="text" name="username" required>
+        <label>Username / Client ID</label>
+      </div>
+      <div class="form-group">
+        <input type="password" name="password" id="password" required>
+        <label>Password</label>
+        <span class="toggle-password" onclick="togglePassword()">👁</span>
+      </div>
+      <button id="loginButton" type="submit">
+        <span class="button-text">Login</span>
+        <div class="spinner" id="spinner" style="display: none;"></div>
+      </button>
+    </form>
+  </div>
+
+  <script>
+    function togglePassword() {
+      const pwd = document.getElementById("password");
+      pwd.type = pwd.type === "password" ? "text" : "password";
+    }
+
+    function showSpinner() {
+      const btn = document.getElementById("loginButton");
+      const spinner = document.getElementById("spinner");
+      const text = btn.querySelector('.button-text');
+
+      btn.disabled = true;
+      spinner.style.display = "block";
+      text.textContent = "Checking...";
+      return true;
+    }
+     function togglePassword() {
+    const pwd = document.getElementById("password");
+    pwd.type = pwd.type === "password" ? "text" : "password";
+  }
+
+  function showSpinner() {
+    const btn = document.getElementById("loginButton");
+    const spinner = document.getElementById("spinner");
+    const text = btn.querySelector('.button-text');
+
+    btn.disabled = true;
+    spinner.style.display = "block";
+    text.textContent = "Checking...";
+    return true;
+  }
+
+  // This resets the spinner in case login failed and page was reloaded
+  window.onload = function () {
+    const btn = document.getElementById("loginButton");
+    const spinner = document.getElementById("spinner");
+    const text = btn?.querySelector('.button-text');
+
+    if (btn && spinner && text) {
+      btn.disabled = false;
+      spinner.style.display = "none";
+      text.textContent = "Login";
+    }
+  };
+  </script>
+</body>
+</html>
