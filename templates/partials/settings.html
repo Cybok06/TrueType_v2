@@ -14,75 +14,164 @@
     }
     html,body{height:100%}
     body{background:var(--bg); color:var(--ink); font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    .app-header{
-      position:sticky; top:0; z-index:1020; background:#fff; border-bottom:1px solid var(--line);
-    }
-    .app-title{font-weight:700; letter-spacing:.2px}
-    .settings-wrap{max-width:980px; margin:0 auto; padding:24px 16px}
+    .settings-wrap{max-width:1040px; margin:0 auto; padding:24px 16px}
     .single-card{
       background:var(--card); border:1px solid var(--line); border-radius:16px;
-      box-shadow:0 8px 30px rgba(2,12,27,0.04);
+      box-shadow:0 10px 34px rgba(2,12,27,0.06);
     }
     .lead-muted{color:var(--muted)}
-    /* Users tile */
-    .users-tile{
+    .tile{
       display:flex; align-items:center; gap:14px; text-decoration:none;
       border:1px solid var(--line); border-radius:14px; padding:16px; background:#fff;
       transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+      height:100%;
     }
-    .users-tile:hover{ transform:translateY(-2px); box-shadow:0 10px 24px rgba(2,12,27,.06); border-color:#cfe1ff; }
-    .users-icon{
+    .tile:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(2,12,27,.08); border-color:#cfe1ff; }
+    .tile-icon{
       display:grid; place-items:center; width:48px; height:48px; border-radius:12px;
       background:#eaf4ff; color:#0b3b7a; flex:0 0 48px;
     }
+    .tile small{ color:var(--muted) }
+    .searchbox{
+      display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:12px; background:#fff;
+      padding:10px 12px; min-width:260px;
+    }
+    .searchbox input{
+      border:none; outline:none; width:220px; background:transparent;
+    }
     @media (max-width:576px){
-      .users-icon{ width:44px; height:44px; border-radius:10px; }
+      .tile-icon{ width:44px; height:44px; border-radius:10px; }
+      .searchbox{ width:100% }
+      .searchbox input{ width:100% }
     }
   </style>
 </head>
 <body>
-  <!-- Header -->
+  {% set ALLOWED = (allowed_slugs or []) | list %}
+  {% set SUPER = session.get('is_superadmin') or session.get('username') == 'admin' %}
+  {% macro can(slug) -%}{{ '1' if SUPER or (slug in ALLOWED) else '' }}{%- endmacro %}
 
-  <!-- Content -->
   <main class="settings-wrap">
     <div class="single-card p-4 p-md-5">
+      <!-- Header / Tools -->
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <div>
-          <h4 class="mb-1"></h4>
-          <div class="lead-muted">Quick access to workspace controls. </div>
+          <h4 class="mb-1">Workspace Settings</h4>
+          <div class="lead-muted">Quick access to configuration and management pages.</div>
         </div>
-        <!-- Login Logs button (visible only to superadmin) -->
-        {% if session.get('is_superadmin') or session.get('username') == 'admin' %}
-        <div class="ms-auto">
+        <div class="d-flex align-items-center gap-2 ms-auto">
+          <div class="searchbox" role="search">
+            <i class="bi bi-search text-secondary"></i>
+            <input id="tileSearch" type="text" placeholder="Search settings ( / )" aria-label="Search settings" />
+          </div>
+          {% if SUPER %}
           <a href="/logs/login" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-journal-text me-1"></i> Login Logs
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Tiles -->
+      <div id="tilesGrid" class="row g-3 g-md-4">
+        {# Users (optional, keep if you want; hide unless super or settings:view) #}
+        {% if SUPER or ('settings:view' in ALLOWED) %}
+        <div class="col-12 col-sm-6 col-lg-4" data-keywords="users admins permissions access roles team">
+          <a class="tile" href="/users" aria-label="Manage Users">
+            <span class="tile-icon"><i class="bi bi-people fs-4"></i></span>
+            <span>
+              <div class="fw-semibold">Users</div>
+              <small>Manage admins & permissions</small>
+            </span>
+          </a>
+        </div>
+        {% endif %}
+
+        {# OMC Companies #}
+        {% if SUPER or ('omc:view' in ALLOWED) %}
+        <div class="col-12 col-sm-6 col-lg-4" data-keywords="omc companies clients oil marketing s-tax">
+          <a class="tile" href="/omc" aria-label="OMC Companies">
+            <span class="tile-icon"><i class="bi bi-building-check fs-4"></i></span>
+            <span>
+              <div class="fw-semibold">OMCs</div>
+              <small>Profiles, S-Tax status & statements</small>
+            </span>
+          </a>
+        </div>
+        {% endif %}
+
+        {# BDC Accounts #}
+        {% if SUPER or ('bdc:view' in ALLOWED) %}
+        <div class="col-12 col-sm-6 col-lg-4" data-keywords="bdc accounts bulk distribution receivables">
+          <a class="tile" href="/bdc" aria-label="BDC Accounts">
+            <span class="tile-icon"><i class="bi bi-building fs-4"></i></span>
+            <span>
+              <div class="fw-semibold">BDCs</div>
+              <small>Account ledger & outstanding balances</small>
+            </span>
+          </a>
+        </div>
+        {% endif %}
+
+        {# Products Setup #}
+        {% if SUPER or ('products:view' in ALLOWED) %}
+        <div class="col-12 col-sm-6 col-lg-4" data-keywords="products setup prices skus fuel types">
+          <a class="tile" href="/products" aria-label="Products Setup">
+            <span class="tile-icon"><i class="bi bi-box-seam fs-4"></i></span>
+            <span>
+              <div class="fw-semibold">Products Setup</div>
+              <small>Create & maintain product catalogue</small>
+            </span>
+          </a>
+        </div>
+        {% endif %}
+
+        {# Shareholders #}
+        {% if SUPER or ('shareholders:view' in ALLOWED) %}
+        <div class="col-12 col-sm-6 col-lg-4" data-keywords="shareholders equity cap table owners">
+          <a class="tile" href="/shareholders" aria-label="Shareholders">
+            <span class="tile-icon"><i class="bi bi-people fs-4"></i></span>
+            <span>
+              <div class="fw-semibold">Shareholders</div>
+              <small>Ownership records & equity positions</small>
+            </span>
           </a>
         </div>
         {% endif %}
       </div>
 
-      <!-- Only Users tab (link to /users) -->
-      <div class="row g-3 g-md-4">
-        <div class="col-12 col-sm-6 col-lg-4">
-          <a class="users-tile" href="/users" aria-label="Manage Users">
-            <span class="users-icon">
-              <i class="bi bi-people fs-4"></i>
-            </span>
-            <span>
-              <div class="fw-semibold">Users</div>
-              <small class="text-secondary">Manage admins & permissions</small>
-            </span>
-          </a>
-        </div>
-      </div>
-
-      <!-- Placeholder for future tabs -->
-      <div class="mt-4">
-      </div>
+      <!-- Foot room -->
+      <div class="mt-4"></div>
     </div>
   </main>
 
-  <!-- JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Quick filter + keyboard shortcut
+    (function(){
+      const input = document.getElementById('tileSearch');
+      const grid = document.getElementById('tilesGrid');
+      const items = Array.from(grid.querySelectorAll('[data-keywords]'));
+
+      function applyFilter(q){
+        const needle = (q || '').trim().toLowerCase();
+        items.forEach(card => {
+          const hay = (card.dataset.keywords || '').toLowerCase();
+          const text = card.textContent.toLowerCase();
+          const match = !needle || hay.includes(needle) || text.includes(needle);
+          card.style.display = match ? '' : 'none';
+        });
+      }
+
+      input.addEventListener('input', () => applyFilter(input.value));
+      window.addEventListener('keydown', (e) => {
+        if (e.key === '/' && document.activeElement !== input){
+          e.preventDefault();
+          input.focus();
+          input.select();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
