@@ -18,50 +18,26 @@
       font-family: 'Segoe UI', sans-serif;
       padding: 20px;
     }
-    @keyframes gradientMove {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    form {
-      background: rgba(255, 255, 255, 0.9);
-      border: 2px solid #28a74522;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      border-radius: 15px;
-      transition: transform 0.3s ease;
-    }
+    @keyframes gradientMove { 0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%} }
+    form { background: rgba(255,255,255,.9); border: 2px solid #28a74522; box-shadow: 0 4px 20px rgba(0,0,0,.15); border-radius: 15px; transition: transform .3s ease; }
     form:hover { transform: scale(1.005); }
     label { font-weight: 600; color: #333; }
-    input.form-control:focus {
-      border-color: #1e90ff;
-      box-shadow: 0 0 0 0.2rem rgba(30, 144, 255, 0.25);
-    }
-    .modal-content { border-radius: 12px; box-shadow: 0 4px 25px rgba(0, 0, 0, 0.25); }
-    .modal-header {
-      background: #28a745;
-      color: white;
-      border-top-left-radius: 12px; border-top-right-radius: 12px;
-    }
-    .modal-body strong { color: #1e90ff; }
-    .btn-outline-secondary { border-color: #ffc107; color: #ffc107; transition: 0.3s; }
-    .btn-outline-secondary:hover { background-color: #ffc107; color: #000; }
-    #preview_image { border: 2px dashed #28a745; padding: 3px; }
-    #flash-message { font-weight: bold; animation: fadeIn 0.6s ease-in-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    input.form-control:focus { border-color:#1e90ff; box-shadow:0 0 0 .2rem rgba(30,144,255,.25); }
+    .modal-content { border-radius:12px; box-shadow:0 4px 25px rgba(0,0,0,.25); }
+    .modal-header { background:#28a745; color:#fff; border-top-left-radius:12px; border-top-right-radius:12px; }
+    .modal-body strong { color:#1e90ff; }
+    .btn-outline-secondary { border-color:#ffc107; color:#ffc107; transition:.3s; } .btn-outline-secondary:hover { background:#ffc107; color:#000; }
+    #preview_image { border:2px dashed #28a745; padding:3px; }
+    #flash-message { font-weight:bold; animation: fadeIn .6s ease-in-out; }
+    @keyframes fadeIn { from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)} }
 
     /* 🔄 Full-page loading overlay */
-    #loadingOverlay {
-      position: fixed; inset: 0; background: rgba(255,255,255,.7);
-      display: none; align-items: center; justify-content: center;
-      z-index: 1055; backdrop-filter: blur(2px);
-    }
-    #loadingCard {
-      background: #fff; border-radius: 14px; padding: 18px 22px; box-shadow: 0 10px 30px rgba(0,0,0,.15);
-      display: flex; align-items: center; gap: 12px;
-    }
+    #loadingOverlay { position:fixed; inset:0; background:rgba(255,255,255,.7); display:none; align-items:center; justify-content:center; z-index:1055; backdrop-filter: blur(2px); }
+    #loadingCard { background:#fff; border-radius:14px; padding:18px 22px; box-shadow:0 10px 30px rgba(0,0,0,.15); display:flex; align-items:center; gap:12px; }
 
     /* Share banner for public links */
-    #publicBanner { background: rgba(255,255,255,.9); border-left: 5px solid #0ea5e9; }
+    #publicBanner { background: rgba(255,255,255,.9); border-left:5px solid #0ea5e9; }
+    .form-text.format { font-size:.825rem; color:#64748b; }
   </style>
 </head>
 <body>
@@ -80,7 +56,6 @@
     <i class="bi bi-person-plus-fill"></i> Register New Client
   </h4>
 
-  {# Show Share Link button only for admin/assistant #}
   {% if role in ['admin', 'assistant'] %}
   <button class="btn btn-light shadow-sm" data-bs-toggle="modal" data-bs-target="#shareLinkModal">
     <i class="bi bi-link-45deg me-1"></i> Share Link
@@ -88,7 +63,6 @@
   {% endif %}
 </div>
 
-{# If served via public invite, show a small banner with expiry #}
 {% if role == 'public' and expires_at %}
 <div id="publicBanner" class="alert d-flex align-items-center justify-content-between">
   <div>
@@ -105,21 +79,40 @@
     <div class="col-md-6">
       <label for="name" class="form-label">Client Name <span class="text-danger">*</span></label>
       <input type="text" name="name" id="name" class="form-control" required>
+      <div class="invalid-feedback">Client name is required.</div>
     </div>
 
+    <!-- Phone: must be 0XXXXXXXXX -->
     <div class="col-md-6">
       <label for="phone" class="form-label">Phone Number <span class="text-danger">*</span></label>
-      <input type="tel" name="phone" id="phone" class="form-control" required>
+      <input
+        type="tel"
+        name="phone"
+        id="phone"
+        class="form-control"
+        required
+        inputmode="numeric"
+        autocomplete="tel"
+        pattern="^0\d{9}$"
+        maxlength="10"
+        placeholder="0XXXXXXXXX"
+        title="Enter a valid Ghana phone starting with 0 (10 digits, e.g., 0530393625).">
+      <div class="form-text format">Format: <code>0XXXXXXXXX</code> (e.g., 0530393625)</div>
+      <div class="invalid-feedback">Phone must be 10 digits and start with 0.</div>
     </div>
 
+    <!-- Email: now required -->
     <div class="col-md-6">
-      <label for="email" class="form-label">Email (optional)</label>
-      <input type="email" name="email" id="email" class="form-control">
+      <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
+      <input type="email" name="email" id="email" class="form-control" required placeholder="name@example.com">
+      <div class="invalid-feedback">A valid email is required.</div>
     </div>
 
+    <!-- Location: now required -->
     <div class="col-md-6">
-      <label for="location" class="form-label">Location (optional)</label>
-      <input type="text" name="location" id="location" class="form-control">
+      <label for="location" class="form-label">Location <span class="text-danger">*</span></label>
+      <input type="text" name="location" id="location" class="form-control" required placeholder="e.g., Accra, Madina">
+      <div class="invalid-feedback">Location is required.</div>
     </div>
 
     <div class="col-md-6">
@@ -129,11 +122,23 @@
         <option value="Ghana Card">Ghana Card</option>
         <option value="Voter ID">Voter ID</option>
       </select>
+      <div class="invalid-feedback">Please select an ID type.</div>
     </div>
 
+    <!-- Ghana Card pattern enforced only when 'Ghana Card' is selected -->
     <div class="col-md-6">
       <label for="id_number" class="form-label">ID Number <span class="text-danger">*</span></label>
-      <input type="text" name="id_number" id="id_number" class="form-control" placeholder="e.g. GHA-123456789-0" required>
+      <input
+        type="text"
+        name="id_number"
+        id="id_number"
+        class="form-control"
+        placeholder="e.g. GHA-123456789-0"
+        required
+        data-ghana-card-pattern="^GHA-\d{9}-\d$"
+        title="For Ghana Card use: GHA-XXXXXXXXX-X (e.g., GHA-728079828-6).">
+      <div class="form-text format">Ghana Card format: <code>GHA-XXXXXXXXX-X</code></div>
+      <div class="invalid-feedback">Enter a valid ID number. For Ghana Card use GHA-XXXXXXXXX-X.</div>
     </div>
 
     <div class="col-12">
@@ -144,16 +149,31 @@
     <div class="col-md-6">
       <label for="next_of_kin" class="form-label">Next of Kin Name <span class="text-danger">*</span></label>
       <input type="text" name="next_of_kin" id="next_of_kin" class="form-control" required>
+      <div class="invalid-feedback">Next of kin name is required.</div>
     </div>
 
+    <!-- Apply the same phone rules to Next of Kin (nice to have) -->
     <div class="col-md-6">
       <label for="next_of_kin_phone" class="form-label">Next of Kin Phone <span class="text-danger">*</span></label>
-      <input type="tel" name="next_of_kin_phone" id="next_of_kin_phone" class="form-control" required>
+      <input
+        type="tel"
+        name="next_of_kin_phone"
+        id="next_of_kin_phone"
+        class="form-control"
+        required
+        inputmode="numeric"
+        autocomplete="tel"
+        pattern="^0\d{9}$"
+        maxlength="10"
+        placeholder="0XXXXXXXXX"
+        title="Enter a valid Ghana phone starting with 0 (10 digits).">
+      <div class="invalid-feedback">Next of kin phone must be 10 digits and start with 0.</div>
     </div>
 
     <div class="col-md-6">
       <label for="relationship" class="form-label">Relationship <span class="text-danger">*</span></label>
       <input type="text" name="relationship" id="relationship" class="form-control" required>
+      <div class="invalid-feedback">Relationship is required.</div>
     </div>
 
     <div class="col-12">
@@ -315,6 +335,27 @@
   if (role === "assistant") postUrl = '/assistant/register_client';
   if (role === "public") postUrl = `/public/register_client/${inviteToken}`;
 
+  // ===== Dynamic validation: Ghana Card pattern only when 'Ghana Card' is chosen =====
+  const idTypeEl = document.getElementById('id_type');
+  const idNumberEl = document.getElementById('id_number');
+  const ghanaCardPattern = new RegExp(idNumberEl.dataset.ghanaCardPattern);
+
+  function applyIdPattern() {
+    if (idTypeEl.value === 'Ghana Card') {
+      idNumberEl.setAttribute('pattern', idNumberEl.dataset.ghanaCardPattern);
+      idNumberEl.setAttribute('maxlength', '15'); // GHA-123456789-0
+      idNumberEl.placeholder = 'GHA-123456789-0';
+      idNumberEl.title = 'Format: GHA-XXXXXXXXX-X (e.g., GHA-728079828-6)';
+    } else {
+      idNumberEl.removeAttribute('pattern');
+      idNumberEl.removeAttribute('maxlength');
+      idNumberEl.placeholder = 'Enter ID Number';
+      idNumberEl.title = 'Enter a valid ID number.';
+    }
+  }
+  idTypeEl.addEventListener('change', applyIdPattern);
+  applyIdPattern();
+
   // ===== Submit Handler with Spinner & Overlay =====
   $('#registerForm').on('submit', function (e) {
     e.preventDefault();
@@ -324,7 +365,24 @@
         .removeClass('d-none alert-success').addClass('alert-warning');
       return;
     }
-    if (!this.checkValidity()) { this.reportValidity(); return; }
+
+    // Trim key inputs before validation
+    ['name','phone','email','location','id_number','house_address','next_of_kin','next_of_kin_phone','relationship']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = el.value.trim(); });
+
+    // Extra guard: enforce Ghana Card format when selected
+    if (idTypeEl.value === 'Ghana Card' && !ghanaCardPattern.test(idNumberEl.value)) {
+      idNumberEl.setCustomValidity('Please enter Ghana Card as GHA-XXXXXXXXX-X.');
+    } else {
+      idNumberEl.setCustomValidity('');
+    }
+
+    // Native validity check (uses pattern/required)
+    if (!this.checkValidity()) {
+      this.classList.add('was-validated');
+      this.reportValidity();
+      return;
+    }
 
     const formData = {
       name: $('#name').val(),
@@ -354,8 +412,10 @@
           .addClass('alert-success');
 
         $('#registerForm')[0].reset();
+        $('#registerForm').removeClass('was-validated');
         $('#upload-status').text('');
         $('#preview_image').addClass('d-none');
+        applyIdPattern();
 
         $('#clientID').text(res.client_id || '');
         $('#clientPhone').text(res.phone || formData.phone || '');
@@ -381,7 +441,6 @@
     const amount = $('#shareAmount').val() || 30;
     const unit = $('#shareUnit').val() || 'minutes';
 
-    // button loading state
     btn.disabled = true; spin.classList.remove('d-none');
 
     $.ajax({
