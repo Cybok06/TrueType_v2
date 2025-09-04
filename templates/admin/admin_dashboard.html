@@ -147,23 +147,9 @@
       </a>
     {% endif %}
 
-    {# OMC #}
-    {% if SUPER or ('omc:view' in ALLOWED) %}
-      <a class="sidebar-link d-flex align-items-center" data-url="/omc">
-        <i class="bi bi-building-check me-2"></i>OMC COMPANIES
-        <span id="badge-omc" class="ms-auto badge bg-danger badge-blink" style="display:none"
-              data-bs-toggle="tooltip" data-bs-placement="right" title="...">!</span>
-      </a>
-    {% endif %}
+    
 
-    {# BDC #}
-    {% if SUPER or ('bdc:view' in ALLOWED) %}
-      <a class="sidebar-link d-flex align-items-center" data-url="/bdc">
-        <i class="bi bi-building me-2"></i>BDC ACCOUNTS
-        <span id="badge-bdc" class="ms-auto badge bg-danger badge-blink" style="display:none"
-              data-bs-toggle="tooltip" data-bs-placement="right" title="...">!</span>
-      </a>
-    {% endif %}
+   
 
     {# TAX-OMC #}
     {% if SUPER or ('tax:view' in ALLOWED) %}
@@ -186,13 +172,7 @@
       </a>
     {% endif %}
 
-    {# SHAREHOLDERS #}
-    {% if SUPER or ('shareholders:view' in ALLOWED) %}
-      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/shareholders">
-        <span><i class="bi bi-people me-2"></i>SHAREHOLDERS</span>
-      </a>
-    {% endif %}
-
+   
     {# TRUCK MANAGEMENT #}
     {% set show_truck =
       SUPER or ('trucks:manage' in ALLOWED) or ('trucks:payments' in ALLOWED) or ('trucks:debtors' in ALLOWED)
