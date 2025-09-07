@@ -328,33 +328,38 @@
   }
 
   // Build WhatsApp message
-  function buildMessage($form, includeDepot=false){
-    const id     = $form.data('id');
-    const $modal = $(`#detailsModal${id}`);
-    const product = $modal.data('product')      || $form.data('product') || '';
-    const vehicle = $modal.data('vehicle')      || $form.data('vehicle') || '';
-    const driver  = $modal.data('driver')       || $form.data('driver')  || '';
-    const dphone  = $modal.data('driverphone')  || $form.data('driverphone') || '';
-    const qty     = $modal.data('quantity')     || $form.data('qty') || '';
-    const region  = $modal.data('region')       || $form.data('region') || '';
-    const depot   = $form.find('.depot_input').val() || $modal.data('depot') || '';
-    const omcName = $form.find('.omc-select').val() || '';
-    const $bdcSel = $form.find('.bdc-select option:selected');
-    const bdcName = ($bdcSel.data('bdc-name') || '').toString().trim() || ($bdcSel.text() || '').trim();
+  // Build WhatsApp message
+function buildMessage($form, includeDepot = false){
+  const id     = $form.data('id');
+  const $modal = $(`#detailsModal${id}`);
 
-    const lines = [
-      'ORDER DETAILS',
-      `OMC: ${omcName || 'N/A'}`,
-      `BDC: ${bdcName || 'N/A'}`,
-      `Product: ${product}`,
-      `Quantity: ${qty} L`,
-      `Region: ${region}`,
-      `Vehicle: ${vehicle}`,
-      `Driver: ${driver}${dphone ? ' ('+dphone+')' : ''}`
-    ];
-    if (includeDepot){ lines.push(`Depot: ${depot}`); }
-    return lines.join('\n');
-  }
+  const product = $modal.data('product')      || $form.data('product') || '';
+  const vehicle = $modal.data('vehicle')      || $form.data('vehicle') || '';
+  const driver  = $modal.data('driver')       || $form.data('driver')  || '';
+  const dphone  = $modal.data('driverphone')  || $form.data('driverphone') || '';
+  const qty     = $modal.data('quantity')     || $form.data('qty') || '';
+  const region  = $modal.data('region')       || $form.data('region') || '';
+  const depot   = ($form.find('.depot_input').val() || $modal.data('depot') || '').toString().trim();
+
+  const omcName = $form.find('.omc-select').val() || '';
+  const $bdcSel = $form.find('.bdc-select option:selected');
+  const bdcName = ($bdcSel.data('bdc-name') || '').toString().trim() || ($bdcSel.text() || '').trim();
+
+  const lines = [
+    'ORDER DETAILS',
+    `OMC: ${omcName || 'N/A'}`,
+    `BDC: ${bdcName || 'N/A'}`,
+    `Product: ${product || 'N/A'}`,
+    `Quantity: ${qty ? qty + ' L' : 'N/A'}`,
+    `Region: ${region || 'N/A'}`,
+    `Vehicle: ${vehicle || 'N/A'}`,
+    `Driver: ${driver || 'N/A'}${dphone ? ' ('+dphone+')' : ''}`
+  ];
+
+  if (includeDepot) lines.push(`Depot: ${depot || 'N/A'}`);
+
+  return lines.join('\n');
+}
 
   // ---- Helpers to enable/disable partner selects (with Select2) ----
   function setPartnerState($sel, opts){
@@ -647,30 +652,46 @@
   });
 
   // WhatsApp buttons
-  $(document).on('click', '.send-omc-btn', function(){
-    const $form = $(this).closest('form');
-    const $omcSel = $form.find('.omc-select');
-    if ($omcSel.prop('disabled')) { alert('OMC is not required for this order type.'); return; }
-    const $omcOpt = $omcSel.find('option:selected');
-    const phoneRaw = $omcOpt.data('rep-phone') || '';
-    const phone = normalizePhone(phoneRaw);
-    if(!$omcOpt.val()){ alert('Select an OMC first.'); return; }
-    if(!phone){ alert('OMC rep phone number is missing for this OMC.'); return; }
-    const msg = buildMessage($form, false);
-    openWhatsApp(phone, msg);
-  });
-  $(document).on('click', '.send-bdc-btn', function(){
-    const $form = $(this).closest('form');
-    const $bdcSel = $form.find('.bdc-select');
-    if ($bdcSel.prop('disabled')) { alert('BDC is not required for this order type.'); return; }
-    const $bdcOpt = $bdcSel.find('option:selected');
-    const phoneRaw = $bdcOpt.data('rep-phone') || '';
-    const phone = normalizePhone(phoneRaw);
-    if(!$bdcOpt.val()){ alert('Select a BDC first.'); return; }
-    if(!phone){ alert('BDC rep phone number is missing for this BDC.'); return; }
-    const msg = buildMessage($form, true);
-    openWhatsApp(phone, msg);
-  });
+  // OMC: do NOT include Depot
+$(document).on('click', '.send-omc-btn', function(){
+  const $form = $(this).closest('form');
+  const $omcSel = $form.find('.omc-select');
+  if ($omcSel.prop('disabled')) { alert('OMC is not required for this order type.'); return; }
+  const $omcOpt = $omcSel.find('option:selected');
+  const phoneRaw = $omcOpt.data('rep-phone') || '';
+  const phone = normalizePhone(phoneRaw);
+  if(!$omcOpt.val()){ alert('Select an OMC first.'); return; }
+  if(!phone){ alert('OMC rep phone number is missing for this OMC.'); return; }
+  const msg = buildMessage($form, false); // ← depot excluded
+  openWhatsApp(phone, msg);
+});
+
+// BDC: include Depot (and still enforce Depot present)
+$(document).on('click', '.send-bdc-btn', function(){
+  const $form   = $(this).closest('form');
+  const $bdcSel = $form.find('.bdc-select');
+
+  if ($bdcSel.prop('disabled')) { alert('BDC is not required for this order type.'); return; }
+
+  const $bdcOpt  = $bdcSel.find('option:selected');
+  const phoneRaw = $bdcOpt.data('rep-phone') || '';
+  const phone    = normalizePhone(phoneRaw);
+  if (!$bdcOpt.val()) { alert('Select a BDC first.'); return; }
+  if (!phone)       { alert('BDC rep phone number is missing for this BDC.'); return; }
+
+  const id     = $form.data('id');
+  const $modal = $(`#detailsModal${id}`);
+  const depot  = ($form.find('.depot_input').val() || $modal.data('depot') || '').toString().trim();
+  if (!depot) {
+    alert('Please enter/select a Depot before sending to BDC.');
+    $form.find('.depot_input').focus();
+    return;
+  }
+
+  const msg = buildMessage($form, true); // ← depot included
+  openWhatsApp(phone, msg);
+});
+
 </script>
 </body>
 </html>
