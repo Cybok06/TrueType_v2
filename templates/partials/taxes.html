@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Taxes & Allocations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --brand: #2563eb;        /* blue-600 */
+      --brand-700: #1d4ed8;
+      --accent: #10b981;       /* emerald-500 */
+      --accent-600: #059669;
+      --ink: #0f172a;          /* slate-900 */
+      --muted: #6b7280;        /* gray-500 */
+      --bg-subtle: #f8fafc;    /* slate-50 */
+      --ring: rgba(37, 99, 235, .25);
+    }
+
+    body { background: var(--bg-subtle); color: var(--ink); }
+    .brand-gradient {
+      background: linear-gradient(93deg, var(--brand) 0%, var(--accent) 100%);
+    }
+    .text-brand { color: var(--brand) !important; }
+    .text-accent { color: var(--accent) !important; }
+
+    .page-head {
+      border-radius: 1.25rem;
+      color: #fff;
+      box-shadow: 0 20px 40px rgba(16, 185, 129, .12);
+    }
+
+    .card {
+      border: 0;
+      border-radius: 1rem;
+      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.06);
+    }
+    .card-title {
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .btn-brand {
+      color: #fff;
+      background: linear-gradient(93deg, var(--brand) 0%, var(--accent) 100%);
+      border: none;
+      box-shadow: 0 8px 20px rgba(37, 99, 235, .25);
+    }
+    .btn-brand:hover { opacity: .95; color: #fff; }
+
+    .btn-ghost {
+      background: #fff;
+      border: 1px solid rgba(15, 23, 42, .08);
+      box-shadow: 0 6px 14px rgba(2, 6, 23, .06);
+    }
+    .btn-ghost:hover {
+      border-color: rgba(37, 99, 235, .35);
+      box-shadow: 0 8px 18px rgba(2, 6, 23, .08);
+    }
+
+    .form-select, .form-control {
+      border-radius: .75rem;
+      border: 1px solid rgba(2, 6, 23, 0.08);
+    }
+    .form-select:focus, .form-control:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 .25rem var(--ring);
+    }
+
+    .nav-tabs { border-bottom: 0; gap: .5rem; }
+    .nav-tabs .nav-link {
+      border-radius: 999px;
+      border: 0;
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 8px 20px rgba(2, 6, 23, 0.06);
+    }
+    .nav-tabs .nav-link.active {
+      color: #fff;
+      background: linear-gradient(93deg, var(--brand) 0%, var(--accent) 100%);
+    }
+
+    .table thead th { white-space: nowrap; }
+    .table>:not(caption)>*>* { padding: .6rem .75rem; }
+    .table-hover tbody tr:hover { background: rgba(37, 99, 235, .03); }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: .4rem;
+      border-radius: 999px; padding: .4rem .75rem; font-size: .85rem;
+      background: rgba(37,99,235,.08); color: var(--brand);
+      border: 1px solid rgba(37,99,235,.12);
+    }
+    .chip .dot { width: .45rem; height: .45rem; border-radius: 999px; background: var(--brand); opacity: .9; }
+
+    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small-muted { font-size: .92rem; color: var(--muted); }
+
+    .shadow-soft { box-shadow: 0 12px 30px rgba(2, 6, 23, 0.06); }
+    .btn-outline-brand {
+      color: var(--brand); border-color: rgba(37,99,235,.35);
+    }
+    .btn-outline-brand:hover {
+      color: #fff; background: var(--brand); border-color: var(--brand);
+    }
+
+    .kpi {
+      border-radius: 1rem;
+      background: #fff;
+      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.06);
+      padding: .9rem 1rem;
+    }
+    .kpi .label { color: var(--muted); font-size: .8rem; }
+    .kpi .value { font-weight: 700; font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+
+<div class="container py-4">
+  <!-- Header -->
+  <div class="page-head brand-gradient p-4 p-md-5 mb-4 d-flex align-items-center justify-content-between">
+    <div>
+      <h3 class="mb-1"><i class="bi bi-cash-coin me-2"></i>Taxes & Bank Allocations</h3>
+      <div class="small text-white-50">Allocate OMC P-Tax and BDC payments from a selected bank account.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/taxes-history" class="btn btn-ghost text-brand bg-white">
+        <i class="bi bi-clock-history me-2"></i> Taxes History
+      </a>
+    </div>
+  </div>
+
+  <!-- Bank + KPIs -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-lg-6">
+          <label class="form-label fw-semibold">Pay From (Bank Account)</label>
+          <select id="bank_id" class="form-select">
+            <option value="">— Select Bank —</option>
+            {% for b in banks %}
+              <option value="{{ b._id }}">{{ b.bank_name }} — {{ b.account_name }} (…{{ (b.account_number or '')[-4:] }})</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">All allocations below will be recorded against this bank.</div>
+        </div>
+        <div class="col-lg-6">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="kpi h-100">
+                <div class="label">Quick Links</div>
+                <div class="value">
+                  <a href="/taxes-history" class="btn btn-sm btn-outline-brand">
+                    <i class="bi bi-clock-history me-1"></i> View Taxes History
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="kpi h-100">
+                <div class="label">Tips</div>
+                <div class="value small">
+                  Click <span class="chip"><span class="dot"></span>Fill</span> in tables to prefill exact outstanding.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /row -->
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-0" id="taxTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="omc-tab" data-bs-toggle="tab" data-bs-target="#omc" type="button" role="tab">
+        <i class="bi bi-building me-1"></i> OMC P-Tax
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="bdc-tab" data-bs-toggle="tab" data-bs-target="#bdc" type="button" role="tab">
+        <i class="bi bi-truck-front me-1"></i> BDC Payments
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content py-3">
+    <!-- OMC Tab -->
+    <div class="tab-pane fade show active" id="omc" role="tabpanel" aria-labelledby="omc-tab">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Allocate P-Tax to OMC</h5>
+              <div class="mb-3">
+                <label class="form-label">OMC</label>
+                <input list="omc_list" id="omc_name" class="form-control" placeholder="Start typing OMC name…">
+                <datalist id="omc_list">
+                  {% for n in omc_names %}
+                    <option value="{{ n }}"></option>
+                  {% endfor %}
+                </datalist>
+              </div>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label">Amount (GHS)</label>
+                  <input type="number" step="0.01" min="0" id="omc_amount" class="form-control" placeholder="0.00">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Payment Date</label>
+                  <input type="date" id="omc_date" class="form-control" value="">
+                </div>
+              </div>
+              <div class="row g-2 mt-2">
+                <div class="col-md-6">
+                  <label class="form-label">Reference</label>
+                  <input type="text" id="omc_ref" class="form-control" placeholder="Bank ref / slip">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Paid By</label>
+                  <input type="text" id="omc_paid_by" class="form-control" placeholder="Cashier / Teller">
+                </div>
+              </div>
+              <div class="d-flex gap-2 mt-3">
+                <button id="btn_pay_omc" class="btn btn-brand">
+                  <i class="bi bi-cash-coin me-1"></i> Pay OMC P-Tax
+                </button>
+                <div id="omc_spinner" class="spinner-border text-brand" role="status" style="width: 1.5rem; height: 1.5rem; display:none;"></div>
+              </div>
+              <div id="omc_msg" class="mt-2 small"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-7">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="card-title mb-0">OMC Debts (P-Tax Outstanding)</h5>
+                <button id="refresh_omc_debts" class="btn btn-sm btn-ghost">
+                  <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>OMC</th>
+                      <th class="text-end">Outstanding (GHS)</th>
+                      <th class="text-end">Orders</th>
+                      <th class="text-end">Avg S-Tax (₵/L)</th>
+                      <th class="text-end">Total Qty (L)</th>
+                      <th class="text-end"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="omc_debts_tbody">
+                    <tr><td colspan="6" class="text-muted">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="small-muted mt-1">
+                Tip: click <span class="chip"><span class="dot"></span>Fill</span> to copy the exact outstanding for quick full settlement.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /OMC -->
+
+    <!-- BDC Tab -->
+    <div class="tab-pane fade" id="bdc" role="tabpanel" aria-labelledby="bdc-tab">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Allocate Payment to BDC</h5>
+              <div class="mb-3">
+                <label class="form-label">BDC</label>
+                <select id="bdc_id" class="form-select">
+                  <option value="">— Select BDC —</option>
+                  {% for b in bdcs %}
+                    <option value="{{ b._id }}">{{ b.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label">Amount (GHS)</label>
+                  <input type="number" step="0.01" min="0" id="bdc_amount" class="form-control" placeholder="0.00">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Payment Date</label>
+                  <input type="date" id="bdc_date" class="form-control" value="">
+                </div>
+              </div>
+              <div class="row g-2 mt-2">
+                <div class="col-md-6">
+                  <label class="form-label">Reference</label>
+                  <input type="text" id="bdc_ref" class="form-control" placeholder="Bank ref / slip">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Paid By</label>
+                  <input type="text" id="bdc_paid_by" class="form-control" placeholder="Cashier / Teller">
+                </div>
+              </div>
+              <div class="d-flex gap-2 mt-3">
+                <button id="btn_pay_bdc" class="btn btn-brand">
+                  <i class="bi bi-send-check me-1"></i> Pay BDC
+                </button>
+                <div id="bdc_spinner" class="spinner-border text-brand" role="status" style="width: 1.5rem; height: 1.5rem; display:none;"></div>
+              </div>
+              <div id="bdc_msg" class="mt-2 small"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-7">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="card-title mb-0">BDC Debts (Outstanding)</h5>
+                <button id="refresh_bdc_debts" class="btn btn-sm btn-ghost">
+                  <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>BDC</th>
+                      <th class="text-end">Outstanding (GHS)</th>
+                      <th class="text-end">Unpaid Items</th>
+                      <th class="text-end"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="bdc_debts_tbody">
+                    <tr><td colspan="4" class="text-muted">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="small-muted mt-1">Tip: use <span class="chip"><span class="dot"></span>Fill</span> to prefill the amount.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /BDC -->
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 1080">
+  <div id="toast" class="toast align-items-center text-bg-dark border-0 shadow-soft" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toast_body">Ready.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function(){
+  const fmt = n => (Number(n || 0)).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+  const toastEl = document.getElementById('toast');
+  const toast = new bootstrap.Toast(toastEl, { delay: 2200 });
+  const setToast = (html, type='dark') => {
+    toastEl.className = 'toast align-items-center text-bg-' + type + ' border-0 shadow-soft';
+    document.getElementById('toast_body').innerHTML = html;
+    toast.show();
+  };
+
+  function todayISO(){
+    const d = new Date();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+  // Default dates to today
+  document.getElementById('omc_date').value = todayISO();
+  document.getElementById('bdc_date').value = todayISO();
+
+  function requireBank() {
+    const bank_id = $("#bank_id").val();
+    if(!bank_id){
+      setToast('<i class="bi bi-exclamation-triangle me-2"></i>Please select a bank account to pay from.', 'warning');
+      return null;
+    }
+    return bank_id;
+  }
+
+  // ---- OMC Debts Table ----
+  async function loadOmcDebts(){
+    $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-muted">Loading…</td></tr>`);
+    try {
+      const r = await fetch("/taxes/omc-debts");
+      const j = await r.json();
+      if(j.status !== "success") throw new Error(j.message || "Failed");
+      const rows = j.debts || [];
+      if(!rows.length){
+        $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-muted">No outstanding OMC P-Tax found.</td></tr>`);
+        return;
+      }
+      $("#omc_debts_tbody").empty();
+      rows.forEach(x=>{
+        const tr = $(`
+          <tr>
+            <td>${x.omc}</td>
+            <td class="text-end mono">${fmt(x.outstanding)}</td>
+            <td class="text-end">${x.unpaid_orders}</td>
+            <td class="text-end mono">${fmt(x.avg_s_tax_per_l)}</td>
+            <td class="text-end mono">${fmt(x.total_quantity)}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-brand btn-fill-omc" data-bs-toggle="tooltip" title="Prefill amount"
+                data-omc="${x.omc}" data-amt="${x.outstanding}">
+                <i class="bi bi-magic me-1"></i> Fill
+              </button>
+            </td>
+          </tr>
+        `);
+        $("#omc_debts_tbody").append(tr);
+      });
+      // Activate tooltips
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+    } catch(e){
+      $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-danger">Error: ${e.message}</td></tr>`);
+    }
+  }
+
+  // ---- BDC Debts Table ----
+  async function loadBdcDebts(){
+    $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-muted">Loading…</td></tr>`);
+    try {
+      const r = await fetch("/taxes/bdc-debts");
+      const j = await r.json();
+      if(j.status !== "success") throw new Error(j.message || "Failed");
+      const rows = j.debts || [];
+      if(!rows.length){
+        $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-muted">No outstanding BDC items found.</td></tr>`);
+        return;
+      }
+      $("#bdc_debts_tbody").empty();
+      rows.forEach(x=>{
+        const tr = $(`
+          <tr>
+            <td>${x.bdc}</td>
+            <td class="text-end mono">${fmt(x.outstanding)}</td>
+            <td class="text-end">${x.unpaid_items}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-brand btn-fill-bdc" data-bs-toggle="tooltip" title="Prefill amount"
+                data-bdc="${x.bdc_id}" data-amt="${x.outstanding}">
+                <i class="bi bi-magic me-1"></i> Fill
+              </button>
+            </td>
+          </tr>
+        `);
+        $("#bdc_debts_tbody").append(tr);
+      });
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+    } catch(e){
+      $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-danger">Error: ${e.message}</td></tr>`);
+    }
+  }
+
+  // Fill buttons -> preload form
+  $(document).on("click", ".btn-fill-omc", function(){
+    $("#omc_name").val($(this).data("omc"));
+    $("#omc_amount").val($(this).data("amt"));
+    setToast('<i class="bi bi-check2-circle me-2"></i>Amount prefilled for OMC.', 'success');
+  });
+  $(document).on("click", ".btn-fill-bdc", function(){
+    $("#bdc_id").val($(this).data("bdc"));
+    $("#bdc_amount").val($(this).data("amt"));
+    setToast('<i class="bi bi-check2-circle me-2"></i>Amount prefilled for BDC.', 'success');
+  });
+
+  // ---- Submit OMC ----
+  $("#btn_pay_omc").on("click", async function(){
+    const bank_id = requireBank(); if(!bank_id) return;
+
+    const payload = {
+      bank_id,
+      omc: $("#omc_name").val().trim(),
+      amount: $("#omc_amount").val(),
+      reference: $("#omc_ref").val().trim(),
+      paid_by: $("#omc_paid_by").val().trim(),
+      payment_date: $("#omc_date").val()
+    };
+    if(!payload.omc){ setToast('<i class="bi bi-exclamation-triangle me-2"></i>Enter/select an OMC name.', 'warning'); return; }
+    if(!(parseFloat(payload.amount) > 0)){ setToast('<i class="bi bi-exclamation-triangle me-2"></i>Enter a valid amount.', 'warning'); return; }
+
+    $("#btn_pay_omc").prop("disabled",true); $("#omc_spinner").show(); $("#omc_msg").removeClass().text("");
+    try{
+      const r = await fetch("/taxes/pay-omc", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+      const j = await r.json();
+      if(j.status !== "success") throw new Error(j.message || "Failed");
+      $("#omc_msg").addClass("text-success").text(`Success: allocated GHS ${fmt(j.amount)} to ${j.omc}.`);
+      setToast('<i class="bi bi-check2-circle me-2"></i>OMC payment allocated successfully.', 'success');
+      loadOmcDebts();
+    }catch(e){
+      $("#omc_msg").addClass("text-danger").text(`Error: ${e.message}`);
+      setToast('<i class="bi bi-x-circle me-2"></i>'+ (e.message || 'Error allocating OMC payment'), 'danger');
+    }finally{
+      $("#btn_pay_omc").prop("disabled",false); $("#omc_spinner").hide();
+    }
+  });
+
+  // ---- Submit BDC ----
+  $("#btn_pay_bdc").on("click", async function(){
+    const bank_id = requireBank(); if(!bank_id) return;
+
+    const payload = {
+      bank_id,
+      bdc_id: $("#bdc_id").val(),
+      amount: $("#bdc_amount").val(),
+      reference: $("#bdc_ref").val().trim(),
+      paid_by: $("#bdc_paid_by").val().trim(),
+      payment_date: $("#bdc_date").val()
+    };
+    if(!payload.bdc_id){ setToast('<i class="bi bi-exclamation-triangle me-2"></i>Select a BDC.', 'warning'); return; }
+    if(!(parseFloat(payload.amount) > 0)){ setToast('<i class="bi bi-exclamation-triangle me-2"></i>Enter a valid amount.', 'warning'); return; }
+
+    $("#btn_pay_bdc").prop("disabled",true); $("#bdc_spinner").show(); $("#bdc_msg").removeClass().text("");
+    try{
+      const r = await fetch("/taxes/pay-bdc", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)});
+      const j = await r.json();
+      if(j.status !== "success") throw new Error(j.message || "Failed");
+      $("#bdc_msg").addClass("text-success").text(`Success: allocated GHS ${fmt(j.amount)} to selected BDC.`);
+      setToast('<i class="bi bi-check2-circle me-2"></i>BDC payment allocated successfully.', 'success');
+      loadBdcDebts();
+    }catch(e){
+      $("#bdc_msg").addClass("text-danger").text(`Error: ${e.message}`);
+      setToast('<i class="bi bi-x-circle me-2"></i>'+ (e.message || 'Error allocating BDC payment'), 'danger');
+    }finally{
+      $("#btn_pay_bdc").prop("disabled",false); $("#bdc_spinner").hide();
+    }
+  });
+
+  // Refresh buttons
+  $("#refresh_omc_debts").on("click", loadOmcDebts);
+  $("#refresh_bdc_debts").on("click", loadBdcDebts);
+
+  // init
+  loadOmcDebts();
+  loadBdcDebts();
+})();
+</script>
+</body>
+</html>
