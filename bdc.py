@@ -286,8 +286,8 @@ def bdc_profile(bdc_id):
     if not bdc:
         return "BDC not found", 404
 
-    role = session.get("role", "assistant")
-    dashboard_url = "/admin/dashboard" if role == "admin" else "/assistant/dashboard"
+    role = session.get("role", "admin")
+    dashboard_url = "/admin/dashboard"
 
     # Optional date filtering for transactions
     start = request.args.get("start")
