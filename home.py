@@ -8,7 +8,6 @@ home_bp = Blueprint('home', __name__, template_folder='templates')
 orders_collection   = db['orders']
 clients_collection  = db['clients']
 payments_collection = db['payments']
-settings_collection = db['settings']
 
 
 def _sum_returns_total():
@@ -31,13 +30,9 @@ def _sum_returns_total():
 
 @home_bp.route('/home')
 def dashboard_home():
-    if 'role' not in session or session['role'] not in ['admin', 'assistant']:
+    if 'role' not in session or session['role'] != 'admin':
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
-
-    settings_doc = settings_collection.find_one() or {}
-    if not settings_doc.get('view_dashboard', False):
-        return render_template('partials/home.html', dashboard_disabled=True)
 
     total_clients = clients_collection.estimated_document_count()
     total_orders = orders_collection.estimated_document_count()
@@ -68,7 +63,6 @@ def dashboard_home():
 
     return render_template(
         'partials/home.html',
-        dashboard_disabled=False,
         total_clients=total_clients,
         total_orders=total_orders,
         total_approved_orders=total_approved_orders,
@@ -82,7 +76,7 @@ def dashboard_home():
 
 @home_bp.route('/home/details')
 def dashboard_details():
-    if 'role' not in session or session['role'] not in ['admin', 'assistant']:
+    if 'role' not in session or session['role'] != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
 
     try:
