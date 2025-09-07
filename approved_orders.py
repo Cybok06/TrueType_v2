@@ -8,7 +8,6 @@ approved_orders_bp = Blueprint('approved_orders', __name__, template_folder='tem
 orders_collection = db['orders']
 clients_collection = db['clients']
 payments_collection = db['payments']
-settings_collection = db['settings']
 
 def as_objid_or_none(v):
     """Return ObjectId if possible, else None."""
@@ -30,14 +29,12 @@ def as_float(x, default=0.0):
 
 @approved_orders_bp.route('/approved_orders')
 def view_approved_orders():
-    if 'role' not in session or session['role'] not in ['admin', 'assistant']:
+    if 'role' not in session or session['role'] != 'admin':
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
 
     # ✅ feature flag check
-    settings_doc = settings_collection.find_one() or {}
-    if not settings_doc.get('approve_orders', False):
-        return render_template('partials/home.html', dashboard_disabled=True)
+    
 
     # ✅ load approved orders
     orders = list(orders_collection.find({'status': 'approved'}).sort('date', -1))
