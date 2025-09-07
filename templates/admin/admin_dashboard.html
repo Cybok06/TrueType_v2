@@ -153,7 +153,7 @@
 
     {# TAX-OMC #}
     {% if SUPER or ('tax:view' in ALLOWED) %}
-      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/tax">
+      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/taxes">
         <span><i class="bi bi-receipt-cutoff me-2"></i>TAX-OMC</span>
       </a>
     {% endif %}
@@ -206,12 +206,6 @@
       </div>
     {% endif %}
 
-    {# PRODUCT SETUP #}
-    {% if SUPER or ('products:view' in ALLOWED) %}
-      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/products">
-        <span><i class="bi bi-box-seam me-2"></i>PRODUCT SETUP</span>
-      </a>
-    {% endif %}
 
     {# SETTINGS #}
     {% if SUPER or ('settings:view' in ALLOWED) %}
