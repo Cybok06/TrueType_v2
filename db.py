@@ -7,9 +7,9 @@ client = MongoClient(uri, server_api=ServerApi('1'))
 
 try:
     client.admin.command('ping')
-    print("✅ Connected to MongoDB successfully.")
+    print("Connected to MongoDB successfully.")
 except Exception as e:
-    print("❌ MongoDB connection error:", e)
+    print("MongoDB connection error:", e)
 
 db = client["truetype"]
 
@@ -18,5 +18,5 @@ users_collection = db["users"]
 clients_collection = db["clients"]
 orders_collection = db["orders"]
 payments_collection = db["payments"]
-settings_collection = db['settings']  # ✅ Add this
+
 
