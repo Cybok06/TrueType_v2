@@ -28,13 +28,14 @@ from omc import omc_bp
 from order_cancellation import cancel_bp
 from navbar import navbar_bp
 from users import users_bp
+from taxes import taxes_bp
+
 
 # === Admin Features ===
 from admin.admin_dashboard import admin_dashboard_bp
 from admin.settings import admin_settings_bp
 
 # === Assistant Features ===
-from assistant.assistant_dashboard import assistant_dashboard_bp
 from reports import reports_bp
 
 # === Client Features ===
@@ -43,6 +44,8 @@ from client.client_order import client_order_bp
 from client.client_order_history import client_order_history_bp
 from client.client_payment import client_payment_bp
 from login_logs import login_logs_bp
+from taxes_history import taxes_hist_bp
+
 
 # === Initialize App ===
 app = Flask(__name__)
@@ -90,13 +93,16 @@ app.register_blueprint(cancel_bp)  # routes like /orders/cancel/...
 app.register_blueprint(navbar_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(login_logs_bp)
+app.register_blueprint(taxes_bp)
+app.register_blueprint(taxes_hist_bp)
+
+
 
 # Admin
 app.register_blueprint(admin_dashboard_bp, url_prefix="/admin")
 app.register_blueprint(admin_settings_bp)
 
-# Assistant
-app.register_blueprint(assistant_dashboard_bp, url_prefix="/assistant")
+# Assistant (removed)
 
 # Client
 app.register_blueprint(client_dashboard_bp, url_prefix="/client")
