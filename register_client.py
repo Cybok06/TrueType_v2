@@ -103,12 +103,12 @@ def _invite_doc_by_token(token: str):
         return None
     return invite_links_collection.find_one({"token": token})
 
-# ------------- Create Shareable Link (admin/assistant) -------------
+# ------------- Create Shareable Link (admin only) -------------
 @register_client_bp.route('/share/register-link', methods=['POST'])
 def create_register_share_link():
     role = session.get("role")
     username = session.get("username")
-    if role not in ("admin", "assistant"):
+    if role != "admin":
         return jsonify({"message": "Access denied."}), 403
 
     amount = request.form.get('amount') or (request.json or {}).get('amount')
@@ -173,9 +173,8 @@ def public_register_submit(token):
 
     return _perform_registration(created_by={"role": "invite", "token": token})
 
-# ------------- Admin & Assistant -------------
+# ------------- Admin -------------
 @register_client_bp.route('/admin/register_client', methods=['GET', 'POST'])
-@register_client_bp.route('/assistant/register_client', methods=['GET', 'POST'])
 def register_client():
     if request.method == 'POST':
         role = session.get("role", "unknown")
