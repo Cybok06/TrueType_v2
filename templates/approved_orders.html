@@ -24,6 +24,8 @@
     .dt-buttons .btn { margin-right: 8px; }
     #filtersRow .form-select { font-size: 0.875rem; }
     .header-bar { background: #0d6efd; color: white; padding: 10px 20px; border-radius: 6px; }
+    .search-wrap { margin-top: 14px; }
+    .copy-btn { cursor: pointer; }
     @media (max-width: 576px){ .dt-buttons .btn { margin-bottom: 6px; } }
   </style>
 </head>
@@ -42,7 +44,19 @@
     <h2 class="mb-0"><i class="bi bi-check2-circle me-2"></i>Approved Orders</h2>
   </div>
 
-  <!-- Filters Row -->
+  <!-- Quick Search -->
+  <div class="row search-wrap">
+    <div class="col-md-6">
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input id="globalSearch" type="search" class="form-control" placeholder="Search by 5-digit code, Mongo ID, client, vehicle, OMC, BDC, region, etc." value="{{ initial_q or '' }}">
+        <button class="btn btn-outline-secondary" id="clearSearch" type="button">Clear</button>
+      </div>
+      <small class="text-muted">Tip: paste the 5-digit code (Order Code) or the Mongo ID to jump to a record.</small>
+    </div>
+  </div>
+
+  <!-- Filters Row (per-column dropdowns) -->
   <div class="row mt-3 g-2" id="filtersRow"></div>
 
   <!-- Orders Table -->
@@ -50,8 +64,14 @@
     <table id="approvedOrdersTable" class="table table-striped table-bordered w-100">
       <thead class="table-dark">
         <tr>
+          <!-- NEW: five-digit code -->
+          
+          <!-- Optional human-provided order id (e.g., JJRRA) -->
+          <th>Order ID</th>
+          <!-- Mongo ID (copyable) -->
+          
+
           <th><i class="bi bi-calendar3"></i><br>Date</th>
-          <!-- ✅ NEW COLUMN -->
           <th><i class="bi bi-clock-history"></i><br>Approved At</th>
           <th><i class="bi bi-person-circle"></i><br>Client</th>
           <th><i class="bi bi-truck"></i><br>Vehicle #</th>
@@ -81,9 +101,13 @@
         {% set s_component_total = (order.s_tax or 0.0) + (order.s_bdc_omc or 0.0) %}
         {% set left_amt = (order.total_debt or 0.0) - (order.amount_paid or 0.0) %}
         <tr>
-          <td>{{ order.date.strftime('%d-%b-%Y') if order.date else '-' }}</td>
+         
+          <!-- Human order_id -->
+          <td>{{ order.order_id or '-' }}</td>
 
-          <!-- ✅ NEW CELL: show approved date/time if present -->
+          
+
+          <td>{{ order.date.strftime('%d-%b-%Y') if order.date else '-' }}</td>
           <td>
             {% if order.approved_at %}
               {{ order.approved_at.strftime('%d-%b-%Y %H:%M') }} GMT
@@ -104,11 +128,7 @@
           <td>{{ order.omc }}</td>
           <td>{{ order.bdc_name or '-' }}</td>
           <td>{{ order.depot }}</td>
-
-          <!-- Quantity (integer with thousand separator) -->
           <td>{{ "{:,}".format((order.quantity or 0)|int) }}</td>
-
-          <!-- Prices/Amounts with thousand separators and 2 decimals -->
           <td>{{ "{:,.2f}".format(order.p_bdc_omc or 0.0) }}</td>
           <td>{{ "{:,.2f}".format(order.s_bdc_omc or 0.0) }}</td>
           <td>{{ "{:,.2f}".format(order.p_tax or 0.0) }}</td>
@@ -119,21 +139,14 @@
           <td>{{ "{:,.2f}".format(order.total_debt or 0.0) }}</td>
           <td>{{ "{:,.2f}".format(order.amount_paid or 0.0) }}</td>
           <td>{{ "{:,.2f}".format(left_amt) }}</td>
-
           <td>
             {% if order.shareholder %}
-              <span class="badge {% if order.shareholder == 'Neutral' %}bg-secondary{% else %}bg-primary{% endif %}">
-                {{ order.shareholder }}
-              </span>
-            {% else %}
-              —
-            {% endif %}
+              <span class="badge {% if order.shareholder == 'Neutral' %}bg-secondary{% else %}bg-primary{% endif %}">{{ order.shareholder }}</span>
+            {% else %} — {% endif %}
           </td>
           <td>
             {% if order.delivery_status %}
-              <span class="badge bg-{{ 'success' if order.delivery_status|lower == 'delivered' else 'warning' }}">
-                {{ order.delivery_status }}
-              </span>
+              <span class="badge bg-{{ 'success' if order.delivery_status|lower == 'delivered' else 'warning' }}">{{ order.delivery_status }}</span>
             {% else %}
               <span class="badge bg-secondary">Pending</span>
             {% endif %}
@@ -165,34 +178,16 @@
       scrollX: true,
       ordering: true,
       pageLength: 50,
-      // ✅ sort by Approved At (new column index = 1)
-      order: [[1, 'desc']],
+      // Sort by Approved At desc (column index shifted by new ID columns)
+      order: [[4, 'desc']],
       dom: 'Bfrtip',
       buttons: [
-        {
-          extend: 'excelHtml5',
-          className: 'btn btn-success btn-sm',
-          title: 'Approved Orders',
-          exportOptions: {
-            modifier: { page: 'all', search: 'applied' },
-            columns: ':visible:not(.no-export)'
-          }
-        },
-        {
-          extend: 'csvHtml5',
-          className: 'btn btn-info btn-sm',
-          title: 'Approved Orders',
-          exportOptions: {
-            modifier: { page: 'all', search: 'applied' },
-            columns: ':visible:not(.no-export)'
-          }
-        },
-        {
-          extend: 'pdfHtml5',
-          className: 'btn btn-danger btn-sm',
-          title: 'Approved Orders',
-          orientation: 'landscape',
-          pageSize: 'A3',
+        { extend: 'excelHtml5', className: 'btn btn-success btn-sm', title: 'Approved Orders',
+          exportOptions: { modifier: { page: 'all', search: 'applied' }, columns: ':visible:not(.no-export)' } },
+        { extend: 'csvHtml5',   className: 'btn btn-info btn-sm',    title: 'Approved Orders',
+          exportOptions: { modifier: { page: 'all', search: 'applied' }, columns: ':visible:not(.no-export)' } },
+        { extend: 'pdfHtml5',   className: 'btn btn-danger btn-sm',  title: 'Approved Orders',
+          orientation: 'landscape', pageSize: 'A3',
           exportOptions: {
             modifier: { page: 'all', search: 'applied' },
             columns: ':visible:not(.no-export)',
@@ -208,9 +203,7 @@
             doc.styles.tableHeader.alignment = 'center';
             doc.defaultStyle.fontSize = 9;
             doc.styles.tableHeader.fontSize = 10;
-
-            const now = new Date();
-            const stamp = now.toLocaleString();
+            const stamp = new Date().toLocaleString();
             doc.footer = function(currentPage, pageCount) {
               return {
                 columns: [
@@ -219,23 +212,14 @@
                 ]
               };
             };
-
             const tableBody = doc.content[1].table.body;
             const colCount = tableBody[0].length;
             doc.content[1].table.widths = Array(colCount).fill('auto');
           }
         },
-        {
-          extend: 'print',
-          className: 'btn btn-secondary btn-sm',
-          title: 'Approved Orders',
-          exportOptions: {
-            modifier: { page: 'all', search: 'applied' },
-            columns: ':visible:not(.no-export)'
-          }
-        }
+        { extend: 'print', className: 'btn btn-secondary btn-sm', title: 'Approved Orders',
+          exportOptions: { modifier: { page: 'all', search: 'applied' }, columns: ':visible:not(.no-export)' } }
       ],
-
       // Normalize search/sort; ensure numeric sort works with thousands separators
       columnDefs: [{
         targets: '_all',
@@ -245,22 +229,31 @@
             tmp.innerHTML = val == null ? '' : String(val);
             return (tmp.textContent || tmp.innerText || '').trim();
           };
-
           if (type === 'sort') {
-            const text = htmlToText(data).replace(/,/g, ''); // drop thousand separators
+            const text = htmlToText(data).replace(/,/g, '');
             const num = parseFloat(text);
-            // If numeric, return number for proper numeric sort; else return plain text
             return isNaN(num) ? text : num;
           }
-          if (type === 'filter') {
-            return htmlToText(data);
-          }
-          return data; // display as-is (already formatted from server)
+          if (type === 'filter') return htmlToText(data);
+          return data;
         }
       }]
     });
 
-    // Build column filters (dropdown for each column)
+    // Global search box
+    const $gs = $('#globalSearch');
+    const initialQ = $gs.val().trim();
+    if (initialQ) table.search(initialQ).draw();
+
+    $gs.on('keyup change', function () {
+      table.search(this.value).draw();
+    });
+    $('#clearSearch').on('click', function () {
+      $gs.val('');
+      table.search('').draw();
+    });
+
+    // Per-column filters (dropdowns)
     $('#filtersRow').empty();
     table.columns().every(function () {
       const column = this;
@@ -279,17 +272,24 @@
         column.search(val ? '^' + val + '$' : '', true, false).draw();
       });
 
-      // Unique options (built from current column data)
-      column
-        .data()
-        .unique()
-        .sort()
-        .each(function (d) {
-          const tmp = document.createElement('div');
-          tmp.innerHTML = (d || '').toString();
-          const text = (tmp.textContent || tmp.innerText || '').trim();
-          if (text !== '') $select.append(`<option value="${text}">${text}</option>`);
-        });
+      column.data().unique().sort().each(function (d) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = (d || '').toString();
+        const text = (tmp.textContent || tmp.innerText || '').trim();
+        if (text !== '') $select.append(`<option value="${text}">${text}</option>`);
+      });
+    });
+
+    // Copy Mongo ID
+    $(document).on('click', '.copy-btn', async function () {
+      const v = this.getAttribute('data-copy') || '';
+      try {
+        await navigator.clipboard.writeText(v);
+        this.classList.replace('bi-clipboard', 'bi-clipboard-check');
+        setTimeout(() => this.classList.replace('bi-clipboard-check', 'bi-clipboard'), 1200);
+      } catch (e) {
+        alert('Copy failed. Please copy manually.');
+      }
     });
   });
 </script>
