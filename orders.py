@@ -57,7 +57,7 @@ def human_order_id(order) -> str:
 # --------------- pages ---------------
 @orders_bp.route('/', methods=['GET'])
 def view_orders():
-    if 'role' not in session or session['role'] not in ['admin', 'assistant']:
+    if 'role' not in session or session['role'] != 'admin':
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
 
@@ -112,13 +112,13 @@ def view_orders():
         order['returns_sbdc']  = round(ret_price, 2)   # price-margin × Q
         order['returns_stax']  = round(ret_tax, 2)     # tax-margin × Q
         order['returns_total'] = round(ret_total, 2)
-        order['returns']       = round(ret_total, 2)   # legacy alias
+        order['returns']       = round(ret_total, 2 )  # legacy alias
 
     return render_template('partials/orders.html', orders=orders, bdcs=bdcs, omcs=omcs)
 
 @orders_bp.route('/update/<order_id>', methods=['POST'])
 def update_order(order_id):
-    if 'role' not in session or session['role'] not in ['admin', 'assistant']:
+    if 'role' not in session or session['role'] != 'admin':
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
     form = request.form
