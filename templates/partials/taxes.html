@@ -251,14 +251,13 @@
                     <tr>
                       <th>OMC</th>
                       <th class="text-end">Outstanding (GHS)</th>
-                      <th class="text-end">Orders</th>
                       <th class="text-end">Avg S-Tax (₵/L)</th>
                       <th class="text-end">Total Qty (L)</th>
                       <th class="text-end"></th>
                     </tr>
                   </thead>
                   <tbody id="omc_debts_tbody">
-                    <tr><td colspan="6" class="text-muted">Loading…</td></tr>
+                    <tr><td colspan="5" class="text-muted">Loading…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -333,12 +332,11 @@
                     <tr>
                       <th>BDC</th>
                       <th class="text-end">Outstanding (GHS)</th>
-                      <th class="text-end">Unpaid Items</th>
                       <th class="text-end"></th>
                     </tr>
                   </thead>
                   <tbody id="bdc_debts_tbody">
-                    <tr><td colspan="4" class="text-muted">Loading…</td></tr>
+                    <tr><td colspan="3" class="text-muted">Loading…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -395,14 +393,14 @@
 
   // ---- OMC Debts Table ----
   async function loadOmcDebts(){
-    $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-muted">Loading…</td></tr>`);
+    $("#omc_debts_tbody").html(`<tr><td colspan="5" class="text-muted">Loading…</td></tr>`);
     try {
       const r = await fetch("/taxes/omc-debts");
       const j = await r.json();
       if(j.status !== "success") throw new Error(j.message || "Failed");
       const rows = j.debts || [];
       if(!rows.length){
-        $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-muted">No outstanding OMC P-Tax found.</td></tr>`);
+        $("#omc_debts_tbody").html(`<tr><td colspan="5" class="text-muted">No outstanding OMC P-Tax found.</td></tr>`);
         return;
       }
       $("#omc_debts_tbody").empty();
@@ -411,7 +409,6 @@
           <tr>
             <td>${x.omc}</td>
             <td class="text-end mono">${fmt(x.outstanding)}</td>
-            <td class="text-end">${x.unpaid_orders}</td>
             <td class="text-end mono">${fmt(x.avg_s_tax_per_l)}</td>
             <td class="text-end mono">${fmt(x.total_quantity)}</td>
             <td class="text-end">
@@ -427,20 +424,20 @@
       // Activate tooltips
       document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
     } catch(e){
-      $("#omc_debts_tbody").html(`<tr><td colspan="6" class="text-danger">Error: ${e.message}</td></tr>`);
+      $("#omc_debts_tbody").html(`<tr><td colspan="5" class="text-danger">Error: ${e.message}</td></tr>`);
     }
   }
 
   // ---- BDC Debts Table ----
   async function loadBdcDebts(){
-    $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-muted">Loading…</td></tr>`);
+    $("#bdc_debts_tbody").html(`<tr><td colspan="3" class="text-muted">Loading…</td></tr>`);
     try {
       const r = await fetch("/taxes/bdc-debts");
       const j = await r.json();
       if(j.status !== "success") throw new Error(j.message || "Failed");
       const rows = j.debts || [];
       if(!rows.length){
-        $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-muted">No outstanding BDC items found.</td></tr>`);
+        $("#bdc_debts_tbody").html(`<tr><td colspan="3" class="text-muted">No outstanding BDC items found.</td></tr>`);
         return;
       }
       $("#bdc_debts_tbody").empty();
@@ -449,7 +446,6 @@
           <tr>
             <td>${x.bdc}</td>
             <td class="text-end mono">${fmt(x.outstanding)}</td>
-            <td class="text-end">${x.unpaid_items}</td>
             <td class="text-end">
               <button class="btn btn-sm btn-outline-brand btn-fill-bdc" data-bs-toggle="tooltip" title="Prefill amount"
                 data-bdc="${x.bdc_id}" data-amt="${x.outstanding}">
@@ -462,7 +458,7 @@
       });
       document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
     } catch(e){
-      $("#bdc_debts_tbody").html(`<tr><td colspan="4" class="text-danger">Error: ${e.message}</td></tr>`);
+      $("#bdc_debts_tbody").html(`<tr><td colspan="3" class="text-danger">Error: ${e.message}</td></tr>`);
     }
   }
 
