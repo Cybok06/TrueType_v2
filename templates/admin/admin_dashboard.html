@@ -119,13 +119,13 @@
       <div class="dropdown">
         <a class="sidebar-link dropdown-toggle d-flex justify-content-between align-items-center js-dropdown"
            href="#" data-target="#paymentsMenu" aria-expanded="false">
-          <span><i class="bi bi-cash-coin me-2"></i>PAYMENTS</span>
+          <span><i class="bi bi-cash-coin me-2"></i>CLIENT PAYMENTS</span>
           <span id="badge-payments" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
         </a>
         <div class="submenu" id="paymentsMenu">
           {% if SUPER or ('payments:receive' in ALLOWED) %}
             <a class="sidebar-link d-flex justify-content-between align-items-center ps-4" data-url="/payments">
-              <span><i class="bi bi-receipt me-2"></i>RECEIVE PAYMENT</span>
+              <span><i class="bi bi-receipt me-2"></i>RECEIVED PAYMENT</span>
               <span id="badge-payments-sub" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
             </a>
           {% endif %}
@@ -154,7 +154,7 @@
     {# TAX-OMC #}
     {% if SUPER or ('tax:view' in ALLOWED) %}
       <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/taxes">
-        <span><i class="bi bi-receipt-cutoff me-2"></i>TAX-OMC</span>
+        <span><i class="bi bi-receipt-cutoff me-2"></i>OMC-BDC TAXES</span>
       </a>
     {% endif %}
 
@@ -390,3 +390,4 @@
   <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
 </body>
 </html>
+
