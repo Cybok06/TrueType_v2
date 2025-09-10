@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from bson import ObjectId, errors
 from db import db
 from datetime import datetime, date
+from pymongo.errors import DuplicateKeyError, OperationFailure  # NEW
 
 orders_bp = Blueprint('orders', __name__, template_folder='templates')
 
@@ -12,6 +13,43 @@ products_collection      = db['products']         # Products collection
 omc_collection           = db['bd_omc']           # OMCs (with rep_phone)
 s_bdc_payment_collection = db['s_bdc_payment']    # central BDC payment collection
 omc_payment_collection   = db['omc_payment']      # simple OMC-side posting collection
+
+# ------------ harden uniqueness for BDC payments ------------
+def _ensure_unique_index():
+    """
+    Try to enforce 1 doc per (order_oid, bdc_id).
+    If duplicates exist now, index creation may fail; runtime dedupe still protects.
+    """
+    try:
+        s_bdc_payment_collection.create_index(
+            [('order_oid', 1), ('bdc_id', 1)],
+            unique=True,
+            name='uniq_order_bdc'
+        )
+    except OperationFailure:
+        # Likely duplicates present or already unique in a different way — safe to ignore.
+        pass
+_ensure_unique_index()
+
+def _dedupe_s_bdc_payments(order_oid: ObjectId, bdc_id: ObjectId):
+    """
+    Remove duplicate BDC payments for the same (order_oid, bdc_id),
+    keeping the most recent by created_at (fallback _id).
+    Returns the kept document (or None if none existed).
+    """
+    cursor = s_bdc_payment_collection.find(
+        {'order_oid': ObjectId(order_oid), 'bdc_id': ObjectId(bdc_id)}
+    ).sort([('created_at', -1), ('_id', -1)])
+
+    docs = list(cursor)
+    if not docs:
+        return None
+
+    keep = docs[0]
+    if len(docs) > 1:
+        to_delete_ids = [d['_id'] for d in docs[1:]]
+        s_bdc_payment_collection.delete_many({'_id': {'$in': to_delete_ids}})
+    return keep
 
 # --------------- helpers ---------------
 def _f(v):
@@ -137,15 +175,14 @@ def update_order(order_id):
         "payment_amount": form.get("payment_amount"),
         "shareholder": (form.get("shareholder") or "").strip(),
 
-        # Optional: bank hints from the form (no auto-allocation here)
+        # Optional: bank hints (no auto allocation here)
         "bank_id": (form.get("bank_id") or "").strip(),
         "bank_reference": (form.get("bank_reference") or "").strip(),
         "bank_paid_by": (form.get("bank_paid_by") or "").strip(),
         "bank_payment_date": (form.get("bank_payment_date") or "").strip(),  # YYYY-MM-DD
     }
 
-    # ---------- REQUIRED FIELDS (aligned with business rules) ----------
-    # DEPOT is always required
+    # ---------- REQUIRED FIELDS ----------
     if not fields["depot"]:
         return jsonify({"success": False, "error": "DEPOT is required."}), 400
 
@@ -153,19 +190,16 @@ def update_order(order_id):
         return jsonify({"success": False, "error": "Invalid order type."}), 400
 
     if mode == "s_tax":
-        # OMC required, BDC NOT required
         if not fields["omc"]:
             return jsonify({"success": False, "error": "OMC is required for S-Tax order type."}), 400
     elif mode == "s_bdc":
-        # BDC required, OMC NOT required
         if not fields["bdc"]:
             return jsonify({"success": False, "error": "BDC is required for S-BDC order type."}), 400
     else:  # combo
-        # Both required
         if not fields["omc"] or not fields["bdc"]:
             return jsonify({"success": False, "error": "OMC and BDC are required for Combo order type."}), 400
 
-    # Fetch order + client ...
+    # Fetch order + client
     try:
         order = orders_collection.find_one({"_id": ObjectId(order_id)})
     except Exception:
@@ -180,15 +214,13 @@ def update_order(order_id):
     except Exception:
         client = None
 
-    # Human order id for postings (NOT the Mongo _id)
+    # Stable human order id for postings (NOT the Mongo _id)
     human_id = human_order_id(order)
 
     # Parse numeric inputs
     def _f_local(v):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return None
+        try: return float(v)
+        except (TypeError, ValueError): return None
 
     def _nz_local(v):
         return v if v is not None else 0.0
@@ -207,11 +239,11 @@ def update_order(order_id):
     if mode == "combo" and (s is None or s_tax is None):
         return jsonify({"success": False, "error": "S-BDC and S-Tax are required for Combo type."}), 400
 
-    # ---- per-L margins ----
+    # per-L margins
     margin_price = (s - p) if (s is not None and p is not None) else None
     margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-    # ---- total debt by order type ----
+    # total debt by order type
     if mode == "s_bdc":
         total_debt = _nz_local(s) * q
     elif mode == "s_tax":
@@ -219,12 +251,12 @@ def update_order(order_id):
     else:  # combo
         total_debt = (_nz_local(s) + _nz_local(s_tax)) * q
 
-    # ---- RETURNS ----
+    # RETURNS
     returns_price = _nz_local(margin_price) * q
     returns_tax   = _nz_local(margin_tax) * q
     returns_total = returns_price + returns_tax
 
-    # Build update doc
+    # Build order update doc
     update_data = {
         "omc": fields["omc"],                  # may be None/'' for s_bdc
         "depot": fields["depot"],
@@ -238,7 +270,7 @@ def update_order(order_id):
         "returns_sbdc": round(returns_price, 2),
         "returns_stax": round(returns_tax, 2),
         "returns_total": round(returns_total, 2),
-        "returns": round(returns_total, 2),
+        "returns": round(returns_total, 2),  # legacy alias
     }
     if margin_price is not None:
         update_data["margin_price"] = round(margin_price, 2)
@@ -270,55 +302,6 @@ def update_order(order_id):
         update_data["bdc_id"] = bdc_id
         update_data["bdc_name"] = bdc.get("name", "")
 
-    # ---------------------------
-    # Payment handling -> s_bdc_payment  (BDC payable)
-    # Cash / From Account / Credit => create pending record (no auto-bank clearing)
-    # ---------------------------
-    payment_type_norm = (fields["payment_type"] or "").strip().lower()
-    if mode != "s_tax" and payment_type_norm in ("cash", "from account", "credit"):
-        if p is None:
-            return jsonify({"success": False, "error": "P-BDC is required to compute payment amount"}), 400
-
-        calc_amount = round(q * p, 2)
-        s_bdc_payment_collection.insert_one({
-            "order_oid": ObjectId(order_id),
-            "order_id": human_id,                      # human order id
-            "bdc_id": bdc_id,
-            "payment_type": fields["payment_type"],    # original case
-            "amount": calc_amount,
-            "client_name": client_name or "—",
-            "product": order.get("product", ""),
-            "vehicle_number": order.get("vehicle_number", ""),
-            "driver_name": order.get("driver_name", ""),
-            "driver_phone": order.get("driver_phone", ""),
-            "quantity": order.get("quantity", ""),
-            "region": order.get("region", ""),
-            "delivery_status": "pending",
-            "shareholder": fields["shareholder"] or None,
-            "bank_status": "pending",
-            "date": datetime.utcnow()
-        })
-
-    # ---------------------------
-    # OMC-side posting (their “returns”/margin receivable)
-    # Only create if we actually have an OMC name
-    # ---------------------------
-    if returns_total and returns_total > 0 and fields["omc"]:
-        omc_payment_collection.insert_one({
-            "order_oid": ObjectId(order_id),
-            "order_id": human_id,                 # human order id
-            "omc_name": fields["omc"],
-            "amount": round(returns_total, 2),
-            "returns_price": round(returns_price, 2),
-            "returns_tax": round(returns_tax, 2),
-            "status": "pending",
-            "shareholder": fields["shareholder"] or None,
-            "product": order.get("product", ""),
-            "quantity": order.get("quantity", ""),
-            "region": order.get("region", ""),
-            "created_at": datetime.utcnow()
-        })
-
     # Status flags
     complete_fields = (update_data.get("total_debt") is not None) and (
         (mode == "s_tax" and ("returns_total" in update_data or "margin_tax" in update_data)) or
@@ -328,12 +311,91 @@ def update_order(order_id):
     update_data["status"] = new_status
     update_data["delivery_status"] = "pending"
 
-    # stamp approved_at when transitioning to approved
+    # Look at previous status to detect first approval
     prev = orders_collection.find_one({"_id": ObjectId(order_id)}, {"status": 1, "approved_at": 1})
-    if new_status == "approved" and (not prev or prev.get("status") != "approved"):
+    is_first_approval = (new_status == "approved" and (not prev or prev.get("status") != "approved"))
+    if is_first_approval:
         update_data["approved_at"] = datetime.utcnow()
 
+    # Persist order fields first
     orders_collection.update_one({"_id": ObjectId(order_id)}, {"$set": update_data})
+
+    # ---------------------------
+    # Create/Update BDC payable idempotently (ONLY on first approval)
+    # with strong dedupe & unique constraint handling
+    # ---------------------------
+    if is_first_approval:
+        # BDC payable (only for s_bdc/combo with a payment type)
+        payment_type_norm = (fields["payment_type"] or "").strip().lower()
+        if mode != "s_tax" and payment_type_norm in ("cash", "from account", "credit"):
+            if p is None:
+                return jsonify({"success": False, "error": "P-BDC is required to compute payment amount"}), 400
+
+            calc_amount = round(q * p, 2)
+
+            # Natural key: one payable per order + BDC
+            s_bdc_key = {"order_oid": ObjectId(order_id), "bdc_id": bdc_id}
+            s_bdc_doc_setoninsert = {
+                "order_id": human_id,
+                "created_at": datetime.utcnow(),
+            }
+            s_bdc_doc_set = {
+                "payment_type": fields["payment_type"],  # keep original case
+                "amount": calc_amount,
+                "client_name": client_name or "—",
+                "product": order.get("product", ""),
+                "vehicle_number": order.get("vehicle_number", ""),
+                "driver_name": order.get("driver_name", ""),
+                "driver_phone": order.get("driver_phone", ""),
+                "quantity": order.get("quantity", ""),
+                "region": order.get("region", ""),
+                "delivery_status": "pending",
+                "shareholder": fields["shareholder"] or None,
+                "bank_status": "pending",
+                "updated_at": datetime.utcnow(),
+            }
+
+            # PRE-DUPE: clean any historical duplicates first
+            _dedupe_s_bdc_payments(ObjectId(order_id), bdc_id)
+
+            # Try upsert; if race/dup happens, dedupe and retry once
+            try:
+                s_bdc_payment_collection.update_one(
+                    s_bdc_key,
+                    {"$setOnInsert": s_bdc_doc_setoninsert, "$set": s_bdc_doc_set},
+                    upsert=True,
+                )
+            except DuplicateKeyError:
+                _dedupe_s_bdc_payments(ObjectId(order_id), bdc_id)
+                s_bdc_payment_collection.update_one(
+                    s_bdc_key,
+                    {"$setOnInsert": s_bdc_doc_setoninsert, "$set": s_bdc_doc_set},
+                    upsert=True,
+                )
+
+        # OMC returns (only if there is an OMC and positive returns)
+        if returns_total and returns_total > 0 and fields["omc"]:
+            omc_key = {"order_oid": ObjectId(order_id), "omc_name": fields["omc"]}
+            omc_doc_setoninsert = {
+                "order_id": human_id,
+                "created_at": datetime.utcnow(),
+            }
+            omc_doc_set = {
+                "amount": round(returns_total, 2),
+                "returns_price": round(returns_price, 2),
+                "returns_tax": round(returns_tax, 2),
+                "status": "pending",
+                "shareholder": fields["shareholder"] or None,
+                "product": order.get("product", ""),
+                "quantity": order.get("quantity", ""),
+                "region": order.get("region", ""),
+                "updated_at": datetime.utcnow(),
+            }
+            omc_payment_collection.update_one(
+                omc_key,
+                {"$setOnInsert": omc_doc_setoninsert, "$set": omc_doc_set},
+                upsert=True,
+            )
 
     approved = (new_status == "approved")
     resp = {
