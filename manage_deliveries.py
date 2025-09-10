@@ -53,12 +53,21 @@ def view_deliveries():
 
     # Fetch only needed fields
     projection = {
-        "_id": 1, "client_id": 1, "bdc_name": 1, "product": 1,
-        "vehicle_number": 1, "driver_name": 1, "driver_phone": 1,
-        "quantity": 1, "region": 1,
-        "delivery_status": 1,   # legacy single delivery status for summary cards
-        "tts_status": 1, "npa_status": 1,
-        "date": 1, "delivered_date": 1
+        "_id": 1,
+        "client_id": 1,
+        "bdc_name": 1,
+        "product": 1,
+        "vehicle_number": 1,
+        "driver_name": 1,
+        "driver_phone": 1,
+        "quantity": 1,
+        "region": 1,
+        "depot": 1,                    # NEW: include depot
+        "delivery_status": 1,          # legacy single delivery status for summary cards
+        "tts_status": 1,
+        "npa_status": 1,
+        "date": 1,
+        "delivered_date": 1,
     }
 
     orders_cursor = orders_collection.find(filters, projection).sort("date", -1)
@@ -105,11 +114,12 @@ def view_deliveries():
             "driver_phone": order.get("driver_phone", ""),
             "quantity": order.get("quantity", ""),
             "region": order.get("region", ""),
+            "depot": order.get("depot", ""),                # NEW: send depot to template
             "delivery_status": legacy_status,
             "tts_status": order.get("tts_status"),
             "npa_status": order.get("npa_status"),
             "date": order.get("date"),
-            "delivered_date": order.get("delivered_date")
+            "delivered_date": order.get("delivered_date"),
         })
 
     regions = sorted(set(d["region"] for d in deliveries if d["region"]))
@@ -121,7 +131,7 @@ def view_deliveries():
         regions=regions,
         bdcs=bdcs,
         status_options=STATUS_OPTIONS,
-        summary={"pending": pending_count, "delivered": delivered_count}
+        summary={"pending": pending_count, "delivered": delivered_count},
     )
 
 @manage_deliveries_bp.route("/deliveries/update_status/<order_id>", methods=["POST"])
@@ -136,7 +146,8 @@ def update_delivery_status(order_id):
     if not oid:
         return jsonify({"success": False, "message": "Invalid order id."}), 400
 
-    order = orders_collection.find_one({"_id": oid})
+    # Fetch order (we'll also include depot/driver_name into history snapshot)
+    order = orders_collection.find_one({"_id": oid}, {"depot": 1, "driver_name": 1})
     if not order:
         return jsonify({"success": False, "message": "Order not found."}), 404
 
@@ -146,11 +157,13 @@ def update_delivery_status(order_id):
     if npa_status:
         update_fields["npa_status"] = npa_status
 
-    # History entry (combined)
+    # History entry (combined) + snapshot of depot/driver
     history_entry = {
         "tts_status": tts_status if tts_status else None,
         "npa_status": npa_status if npa_status else None,
-        "timestamp": datetime.utcnow()
+        "depot": order.get("depot", None),             # NEW
+        "driver_name": order.get("driver_name", None), # NEW
+        "timestamp": datetime.utcnow(),
     }
 
     # Apply updates
@@ -158,25 +171,24 @@ def update_delivery_status(order_id):
         {"_id": oid},
         {
             "$set": update_fields,
-            "$push": {"delivery_history": history_entry}
-        }
+            "$push": {"delivery_history": history_entry},
+        },
     )
 
     # Optional: reflect in bdc.payment_details (if you keep this mirror)
-    # Try to match both ObjectId and string order_id
     bdc_result_1 = bdc_collection.update_one(
         {"payment_details.order_id": oid},
         {"$set": {
             "payment_details.$.tts_status": tts_status if tts_status else None,
-            "payment_details.$.npa_status": npa_status if npa_status else None
-        }}
+            "payment_details.$.npa_status": npa_status if npa_status else None,
+        }},
     )
     bdc_result_2 = bdc_collection.update_one(
         {"payment_details.order_id": str(oid)},
         {"$set": {
             "payment_details.$.tts_status": tts_status if tts_status else None,
-            "payment_details.$.npa_status": npa_status if npa_status else None
-        }}
+            "payment_details.$.npa_status": npa_status if npa_status else None,
+        }},
     )
 
     if orders_result.modified_count == 1 or bdc_result_1.modified_count == 1 or bdc_result_2.modified_count == 1:
@@ -191,9 +203,16 @@ def get_delivery_history(order_id):
         return jsonify({"success": False, "message": "Invalid order id."}), 400
 
     try:
-        order = orders_collection.find_one({"_id": oid}, {"delivery_history": 1})
+        # Include depot/driver_name for the modal
+        order = orders_collection.find_one(
+            {"_id": oid},
+            {"delivery_history": 1, "depot": 1, "driver_name": 1},
+        )
         history = order.get("delivery_history", []) if order else []
         sorted_history = sorted(history, key=lambda x: x.get("timestamp", datetime.min), reverse=True)
+
+        depot = order.get("depot") if order else None
+        driver_name = order.get("driver_name") if order else None
 
         return jsonify({
             "success": True,
@@ -201,10 +220,13 @@ def get_delivery_history(order_id):
                 {
                     "tts_status": h.get("tts_status"),
                     "npa_status": h.get("npa_status"),
-                    "timestamp": (h.get("timestamp") or datetime.utcnow()).strftime("%Y-%m-%d %H:%M:%S")
+                    # Prefer per-entry snapshot if present; else fall back to current order fields
+                    "depot": h.get("depot") if h.get("depot") is not None else depot,                # NEW
+                    "driver_name": h.get("driver_name") if h.get("driver_name") is not None else driver_name,  # NEW
+                    "timestamp": (h.get("timestamp") or datetime.utcnow()).strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 for h in sorted_history
-            ]
+            ],
         })
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "message": "Error fetching history."}), 500
