@@ -52,7 +52,7 @@
       <div class="col-md-3">
         <input type="number" name="p_price" class="form-control" placeholder="P-Price" required step="0.01">
       </div>
-      <!-- NEW: Taxes -->
+      <!-- Taxes -->
       <div class="col-md-3">
         <input type="number" name="s_tax" class="form-control" placeholder="S-Tax" step="0.01">
       </div>
@@ -99,7 +99,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">📈 Price & Tax Trend</h5>
+        <h5 class="modal-title">📈 Price, Tax & Combo Trend</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body"><canvas id="priceTrendChart" height="200"></canvas></div>
@@ -160,7 +160,10 @@ let productsById = new Map();
 let priceChart;
 let lastBuiltLinks = [];
 
-function money(n){ return Number(n || 0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+// ----- Helpers -----
+function n(v){ const x = Number(v); return Number.isFinite(x) ? x : 0; }
+function money(v){ return n(v).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function combo(product){ return n(product.s_price) + n(product.s_tax); }
 function toast(msg, type='info'){
   const el = document.createElement('div');
   el.className = `alert alert-${type} position-fixed top-0 end-0 m-3 shadow`;
@@ -182,6 +185,7 @@ function loadProducts() {
 
     data.forEach(product => {
       productsById.set(String(product._id), product);
+      const comboValue = combo(product);
       list.append(`
         <div class="col-md-4">
           <div class="card shadow-sm mb-4 h-100">
@@ -191,6 +195,7 @@ function loadProducts() {
               <p class="mb-1 price"><strong>P-Price:</strong> GHS ${money(product.p_price)}</p>
               <p class="mb-1"><strong>S-Tax:</strong> GHS ${money(product.s_tax)}</p>
               <p class="mb-1"><strong>P-Tax:</strong> GHS ${money(product.p_tax)}</p>
+              <p class="mb-1 price"><strong>Combo (S-Price + S-Tax):</strong> <span class="badge text-bg-primary">GHS ${money(comboValue)}</span></p>
               <p class="text-muted flex-grow-1">${product.description || 'No description'}</p>
               <div class="d-flex justify-content-between mt-3 gap-2 flex-wrap">
                 <button class="btn btn-sm btn-warning btn-edit" data-id="${product._id}">Edit</button>
@@ -255,22 +260,38 @@ $(document).on('click', '.btn-delete', function(){
 // ---------- Trend ----------
 function renderTrend(product){
   const ctx = document.getElementById('priceTrendChart').getContext('2d');
-  const labels   = (product.price_history || []).map(p => p.date);
-  const s_prices = (product.price_history || []).map(p => p.s_price);
-  const p_prices = (product.price_history || []).map(p => p.p_price);
-  const s_taxes  = (product.price_history || []).map(p => p.s_tax ?? null);
-  const p_taxes  = (product.price_history || []).map(p => p.p_tax ?? null);
+  const hist = Array.isArray(product.price_history) ? product.price_history : [];
+  const labels   = hist.map(p => p.date);
+  const s_prices = hist.map(p => n(p.s_price));
+  const p_prices = hist.map(p => n(p.p_price));
+  const s_taxes  = hist.map(p => (p.s_tax != null ? n(p.s_tax) : null));
+  const p_taxes  = hist.map(p => (p.p_tax != null ? n(p.p_tax) : null));
+  const combos   = hist.map(p => n(p.s_price) + n(p.s_tax));
 
   if (priceChart) priceChart.destroy();
 
   const datasets = [
     { label: 'S-Price', data: s_prices, borderColor: '#0d6efd', fill: false, tension: .3 },
-    { label: 'P-Price', data: p_prices, borderColor: '#198754', fill: false, tension: .3 }
+    { label: 'P-Price', data: p_prices, borderColor: '#198754', fill: false, tension: .3 },
   ];
   if (s_taxes.some(v => typeof v === 'number')) datasets.push({ label: 'S-Tax', data: s_taxes, borderColor: '#dc3545', fill: false, tension: .3 });
   if (p_taxes.some(v => typeof v === 'number')) datasets.push({ label: 'P-Tax', data: p_taxes, borderColor: '#6f42c1', fill: false, tension: .3 });
+  if (combos.some(v => typeof v === 'number' && Number.isFinite(v))) datasets.push({ label: 'Combo (S-Price + S-Tax)', data: combos, borderColor: '#fd7e14', fill: false, tension: .3 });
 
-  priceChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, plugins: { title: { display: true, text: `Price & Tax Trend for ${product.name}` }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: GHS ${money(ctx.parsed.y)}` } } }, scales: { y: { ticks: { callback: (v)=> 'GHS ' + money(v) } } } } });
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: `Price, Tax & Combo Trend for ${product.name}` },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: GHS ${money(ctx.parsed.y)}` } }
+      },
+      scales: {
+        y: { ticks: { callback: (v)=> 'GHS ' + money(v) } }
+      }
+    }
+  });
 }
 $(document).on('click', '.btn-trend', function(){
   const id = $(this).data('id'); const product = productsById.get(String(id)); if (!product) return;
@@ -321,8 +342,8 @@ function renderClientList(filter=''){
   updateSelectedCount();
 }
 function updateSelectedCount(){
-  const n = document.querySelectorAll('#clientList .client-check:checked').length;
-  document.getElementById('selectedCount').textContent = `${n} selected`;
+  const nSel = document.querySelectorAll('#clientList .client-check:checked').length;
+  document.getElementById('selectedCount').textContent = `${nSel} selected`;
 }
 $('#clientSearch').on('input', function(){ renderClientList(this.value); });
 $('#btnSelectAll').on('click', function(){
@@ -334,7 +355,7 @@ $('#btnSelectAll').on('click', function(){
 });
 $(document).on('change', '.client-check', updateSelectedCount);
 
-// ---------- SHARE: open modal, prefill message, build links, open chats ----------
+// ---------- SHARE ----------
 $(document).on('click', '.btn-share', async function(){
   const id = String($(this).data('id'));
   const product = productsById.get(id);
@@ -346,20 +367,32 @@ $(document).on('click', '.btn-share', async function(){
   $('#btnCopyLinks').addClass('d-none');
   lastBuiltLinks = [];
 
-  // fetch default message from backend
+  // default message (include Combo)
   try {
     const res = await fetch(`/products/share/default_message?product_id=${encodeURIComponent(id)}`);
     const data = await res.json();
     if(data && data.success) {
-      $('#shareMessage').val(data.message);
+      // If your backend already returns combo, great; otherwise we append it.
+      const comboLine = `Combo (S-Price + S-Tax): GHS ${money(combo(product))}`;
+      const msg = (data.message || '').trim();
+      $('#shareMessage').val(msg.includes('Combo') ? msg : (msg ? `${msg}\n${comboLine}` : comboLine));
     } else {
-      // fallback message
-      const s = typeof product.s_price === 'number' ? product.s_price : Number(product.s_price||0);
-      const p = typeof product.p_price === 'number' ? product.p_price : Number(product.p_price||0);
-      $('#shareMessage').val(`Price update — ${product.name || 'Product'}\nS-Price: ${s.toFixed(2)}\nP-Price: ${p.toFixed(2)}`);
+      const s = n(product.s_price), p = n(product.p_price);
+      $('#shareMessage').val(
+        `Price update — ${product.name || 'Product'}\n`+
+        `S-Price: GHS ${s.toFixed(2)}\n`+
+        `S-Tax: GHS ${n(product.s_tax).toFixed(2)}\n`+
+        `Combo (S-Price + S-Tax): GHS ${combo(product).toFixed(2)}\n`+
+        `P-Price: GHS ${p.toFixed(2)}`
+      );
     }
   } catch (e) {
-    $('#shareMessage').val(`Price update — ${product.name || 'Product'}\nS-Price: ${Number(product.s_price||0).toFixed(2)}`);
+    $('#shareMessage').val(
+      `Price update — ${product.name || 'Product'}\n`+
+      `S-Price: GHS ${n(product.s_price).toFixed(2)}\n`+
+      `S-Tax: GHS ${n(product.s_tax).toFixed(2)}\n`+
+      `Combo (S-Price + S-Tax): GHS ${combo(product).toFixed(2)}`
+    );
   }
 
   // load clients (only once per page load)
