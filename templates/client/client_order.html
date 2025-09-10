@@ -125,6 +125,7 @@
           <select class="form-select" name="quantity" id="quantity" required>
             <option value="">Select Quantity</option>
             <option value="7500">7,500</option>
+            <option value="7500">9,000</option>
             <option value="13500">13,500</option>
             <option value="18000">18,000</option>
             <option value="27000">27,000</option>
@@ -460,6 +461,127 @@
   });
 
   // No pricing logic/UI included intentionally
+</script>
+<!-- Reusable Loading Overlay -->
+<div id="loadingOverlay" class="submit-overlay">
+  <div class="submit-card text-center">
+    <!-- Spinner -->
+    <div id="overlaySpinner" class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <!-- Success checkmark -->
+    <div id="overlayCheck" class="d-none text-success" style="font-size:3rem;">
+      <i class="bi bi-check-circle-fill"></i>
+    </div>
+
+    <!-- Message -->
+    <div id="overlayMessage" class="mt-3 fw-semibold text-primary">Submitting your order...</div>
+    <small id="overlayHint" class="text-muted d-block mt-2">Please wait...</small>
+  </div>
+</div>
+
+<style>
+  /* Smooth overlay transitions */
+  .submit-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1055;
+    backdrop-filter: blur(2px);
+
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+  }
+  .submit-overlay.show {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Small pop animation for checkmark */
+  #overlayCheck {
+    transform: scale(0.8);
+    opacity: 0;
+    transition: all 0.3s ease;
+  }
+  #overlayCheck.show {
+    transform: scale(1);
+    opacity: 1;
+  }
+</style>
+
+<script>
+  const overlay = document.getElementById("loadingOverlay");
+  const overlaySpinner = document.getElementById("overlaySpinner");
+  const overlayCheck = document.getElementById("overlayCheck");
+  const overlayMessage = document.getElementById("overlayMessage");
+  const overlayHint = document.getElementById("overlayHint");
+  const submitBtn = document.querySelector("form button[type=submit]");
+
+  // Show overlay for order/payment
+  function showOverlay(type = "order") {
+    overlay.classList.add("show");
+    overlaySpinner.classList.remove("d-none");
+    overlayCheck.classList.remove("show");
+    overlayCheck.classList.add("d-none");
+
+    if (type === "order") {
+      overlaySpinner.className = "spinner-border text-primary";
+      overlayMessage.textContent = "Submitting your order...";
+      overlayMessage.className = "mt-3 fw-semibold text-primary";
+      overlayHint.textContent = "Please wait while we process your request.";
+    }
+
+    if (type === "payment") {
+      overlaySpinner.className = "spinner-border text-success";
+      overlayMessage.textContent = "Processing Payment...";
+      overlayMessage.className = "mt-3 fw-semibold text-success";
+      overlayHint.textContent = "Please wait, this may take a few seconds.";
+    }
+  }
+
+  // Show success state (replaces spinner with checkmark)
+  function showSuccess(message = "Payment Successful!") {
+    overlaySpinner.classList.add("d-none");
+    overlayCheck.classList.remove("d-none");
+    setTimeout(() => overlayCheck.classList.add("show"), 10); // trigger animation
+
+    overlayMessage.textContent = message;
+    overlayMessage.className = "mt-3 fw-semibold text-success";
+    overlayHint.textContent = "Redirecting...";
+    
+    // Auto-hide after 2s
+    setTimeout(() => hideOverlay(), 2000);
+  }
+
+  // Hide overlay
+  function hideOverlay() {
+    overlay.classList.remove("show");
+  }
+
+  // Attach to form submit (order submission)
+  const form = document.querySelector("form");
+  form.addEventListener("submit", () => {
+    showOverlay("order");
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+  });
+
+  // Reset overlay if page reloads with errors
+  window.addEventListener("pageshow", () => {
+    hideOverlay();
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = "Submit Order";
+  });
+
+  // Example: trigger payment success manually
+  // document.getElementById("payBtn").addEventListener("click", () => {
+  //   showOverlay("payment");
+  //   setTimeout(() => { showSuccess("Payment Successful!"); }, 3000);
+  // });
 </script>
 
 </body>
