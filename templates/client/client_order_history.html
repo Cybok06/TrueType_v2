@@ -128,6 +128,7 @@
           <th>Qty</th>
           <th>Vehicle</th>
           <th>Region</th>
+          <th>Depot</th>
           <th>Status</th>
           <th>TTS</th>
           <th>NPA</th>
@@ -153,6 +154,7 @@
           <td>{{ "{:,}".format((order.quantity or 0)|int) }}</td>
           <td>{{ order.vehicle_number }}</td>
           <td>{{ order.region }}</td>
+          <td>{{ order.depot }}</td>
           <td>
             {% set status = order.status|lower %}
             <span class="badge px-4 py-2 fw-semibold text-uppercase rounded-pill
