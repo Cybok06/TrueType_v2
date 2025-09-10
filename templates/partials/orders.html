@@ -29,6 +29,19 @@
       .form-label, .btn { font-size:.95rem; }
       .card-header .btn { width:100%; }
     }
+    .bvr-badge {
+  display: inline-block;
+  background: #f1f5f9;        /* light slate background */
+  color: #0f172a;             /* dark text */
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12); /* subtle shadow */
+  border: 1px solid #e2e8f0;  /* soft border */
+}
+
   </style>
 </head>
 
@@ -54,7 +67,18 @@
             {% endif %}
             <strong>{{ order.client_name or 'Client' }} ({{ order.client_id }})</strong>
           </a>
-          <small>• {{ order.product }} • {{ order.quantity }} L • {{ order.date or '' }}</small>
+{# Normalize date to YYYY-MM-DD without time #}
+{% set date_str = (order.date|string).split(' ')[0].split('T')[0] if order.date else '' %}
+
+<small>
+  • {{ order.product }}
+  • {{ order.quantity }} L
+  • {{ date_str }}
+  <span class="bvr-badge">
+    BVR (Truck NO: {{ order.vehicle_number or 'N/A' }} &nbsp; Driver: {{ order.driver_name or 'N/A' }})
+  </span>
+</small>
+
         </div>
         <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
           View Details
@@ -353,10 +377,11 @@ function buildMessage($form, includeDepot = false){
     `Quantity: ${qty ? qty + ' L' : 'N/A'}`,
     `Region: ${region || 'N/A'}`,
     `Vehicle: ${vehicle || 'N/A'}`,
-    `Driver: ${driver || 'N/A'}${dphone ? ' ('+dphone+')' : ''}`
+    `Driver: ${driver || 'N/A'}${dphone ? ' ('+dphone+')' : ''}`,
+    `Depot: ${depot || 'N/A'}`
+
   ];
 
-  if (includeDepot) lines.push(`Depot: ${depot || 'N/A'}`);
 
   return lines.join('\n');
 }
