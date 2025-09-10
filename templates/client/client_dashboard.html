@@ -313,6 +313,7 @@
             <th data-sort="txt">Order Type</th>
             <th data-sort="txt" class="col-hide-sm">Vehicle #</th>
             <th data-sort="num" class="text-end">Qty</th>
+            <th data-sort="num" class="text-end">Depot</th>
             <th data-sort="num" class="text-money">Debt (GHS)</th>
             <th data-sort="num" class="text-money">Paid (GHS)</th>
             <th data-sort="num" class="text-money">Left (GHS)</th>
@@ -342,6 +343,7 @@
             </td>
             <td class="col-hide-sm">{{ order.vehicle_number }}</td>
             <td class="text-end">{{ "{:,}".format((order.quantity or 0)|int) }}</td>
+            <td class="text-end">{{ order.depot }}</td>
             <td class="text-money debt-cell">{{ '%.2f'|format(order.total_debt or 0) }}</td>
             <td class="text-money paid-cell">{{ '%.2f'|format(order.amount_paid or 0) }}</td>
             <td class="text-money left-cell">0.00</td>
