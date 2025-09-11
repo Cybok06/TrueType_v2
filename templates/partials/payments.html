@@ -30,6 +30,9 @@
           <th><i class="fas fa-user"></i> Client</th>
           <th><i class="fas fa-phone"></i> Phone</th>
           <th><i class="fas fa-coins"></i> Amount</th>
+          <th><i class="fas fa-receipt"></i> Order</th>             <!-- NEW -->
+          <th><i class="fas fa-arrow-up-right-dots"></i> Paid</th>  <!-- NEW -->
+          <th><i class="fas fa-scale-unbalanced"></i> Left</th>     <!-- NEW -->
           <th><i class="fas fa-university"></i> Bank</th>
           <th><i class="fas fa-check-circle"></i> Status</th>
           <th><i class="fas fa-file-alt"></i> Proof</th>
@@ -40,7 +43,7 @@
       <!-- ALL rows rendered; JS shows only current page -->
       <tbody id="paymentsTable">
         {% for payment in payments %}
-        <tr>
+        <tr data-payment-id="{{ payment._id }}">
           <td class="col-date">{{ payment.date_str }}</td>
 
           <td class="col-client">
@@ -55,6 +58,36 @@
               GHS {{ "{:,.2f}".format(payment.amount or 0) }}
             </span>
           </td>
+
+          <!-- NEW: Order / Paid / Left -->
+          <td class="col-order text-center">
+            {% if payment.has_order %}
+              <span class="badge bg-info-subtle text-info-emphasis order-code">{{ payment.order_code }}</span>
+            {% else %}
+              <span class="text-muted order-code">—</span>
+            {% endif %}
+          </td>
+
+          <td class="col-paid text-end">
+            {% if payment.has_order %}
+              <span class="text-success fw-semibold total-paid" data-raw="{{ payment.order_total_paid }}">
+                GHS {{ "{:,.2f}".format(payment.order_total_paid or 0) }}
+              </span>
+            {% else %}
+              <span class="text-muted total-paid" data-raw="0">—</span>
+            {% endif %}
+          </td>
+
+          <td class="col-left text-end">
+            {% if payment.has_order %}
+              <span class="text-danger fw-semibold amount-left" data-raw="{{ payment.order_amount_left }}">
+                GHS {{ "{:,.2f}".format(payment.order_amount_left or 0) }}
+              </span>
+            {% else %}
+              <span class="text-muted amount-left" data-raw="0">—</span>
+            {% endif %}
+          </td>
+          <!-- /NEW -->
 
           <td class="col-bank">
             <span class="bank-name">{{ payment.bank_name }}</span>
@@ -259,13 +292,37 @@
     .then(function(r){ return r.json(); })
     .then(function(res){
       if (res.success) {
-        var btn = document.querySelector('button[onclick="openConfirmModal(\'' + paymentId + '\')"]');
-        if (btn) {
-          var row = btn.closest('tr');
+        var row = document.querySelector('tr[data-payment-id="' + paymentId + '"]');
+        if (!row) {
+          // fallback (older selector)
+          var btn = document.querySelector('button[onclick="openConfirmModal(\'' + paymentId + '\')"]');
+          if (btn) row = btn.closest('tr');
+        }
+        if (row) {
           var statusCell = row.querySelector('.col-status');
           var actionCell = row.querySelector('.col-action');
           if (statusCell) statusCell.innerHTML = '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Confirmed</span>';
           if (actionCell) actionCell.innerHTML = '<span class="text-muted"><i class="fas fa-check-double"></i> Done</span>';
+
+          // If backend sent aggregates, refresh Order / Paid / Left
+          if (res.order_code) {
+            var codeEl = row.querySelector('.order-code');
+            if (codeEl) codeEl.textContent = res.order_code;
+          }
+          if (typeof res.total_paid !== 'undefined') {
+            var paidEl = row.querySelector('.total-paid');
+            if (paidEl) {
+              paidEl.setAttribute('data-raw', String(res.total_paid || 0));
+              paidEl.textContent = 'GHS ' + Number(res.total_paid || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            }
+          }
+          if (typeof res.amount_left !== 'undefined') {
+            var leftEl = row.querySelector('.amount-left');
+            if (leftEl) {
+              leftEl.setAttribute('data-raw', String(res.amount_left || 0));
+              leftEl.textContent = 'GHS ' + Number(res.amount_left || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            }
+          }
         }
         bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
       } else {
@@ -278,7 +335,11 @@
   // ——— Export current (visible) page to Excel ———
   function exportToExcel() {
     var rows = [];
-    rows.push(['Date','Client','Client ID','Phone','Amount (GHS)','Bank','Account Last4','Status','Proof URL']);
+    rows.push([
+      'Date','Client','Client ID','Phone',
+      'Amount (GHS)','Order','Total Paid (GHS)','Amount Left (GHS)',
+      'Bank','Account Last4','Status','Proof URL'
+    ]);
 
     Array.prototype.forEach.call(document.querySelectorAll('#paymentsTable tr'), function(tr){
       if (tr.style.display === 'none') return; // only current page
@@ -292,23 +353,34 @@
       var amtEl = tds[3] && tds[3].querySelector('.amount');
       var amount = Number((amtEl && amtEl.getAttribute('data-raw')) || 0);
 
-      var bankText = (tds[4] && tds[4].textContent || '').trim();
+      var orderCode = (tds[4] && tds[4].querySelector('.order-code') && tds[4].querySelector('.order-code').textContent || '').trim();
+
+      var paidEl = tds[5] && tds[5].querySelector('.total-paid');
+      var totalPaid = Number((paidEl && paidEl.getAttribute('data-raw')) || 0);
+
+      var leftEl = tds[6] && tds[6].querySelector('.amount-left');
+      var amountLeft = Number((leftEl && leftEl.getAttribute('data-raw')) || 0);
+
+      var bankText = (tds[7] && tds[7].textContent || '').trim();
       var m = bankText.match(/\*{4}(\d{4})/);
       var last4 = m ? m[1] : '';
       var bank  = bankText.replace(/\(.*\)$/, '').trim();
 
-      var status = (tds[5] && tds[5].textContent || '').trim();
-      var proof  = (tds[6] && tds[6].querySelector('a') && tds[6].querySelector('a').getAttribute('href')) || '';
+      var status = (tds[8] && tds[8].textContent || '').trim();
+      var proofLink = (tds[9] && tds[9].querySelector('a')) ? tds[9].querySelector('a').getAttribute('href') : '';
 
-      rows.push([date, clientName, clientId, phone, amount, bank, last4, status, proof]);
+      rows.push([date, clientName, clientId, phone, amount, orderCode, totalPaid, amountLeft, bank, last4, status, proofLink]);
     });
 
     var ws = XLSX.utils.aoa_to_sheet(rows);
     var range = XLSX.utils.decode_range(ws['!ref']);
-    for (var r = 1; r <= range.e.r; r++) {
-      var addr = XLSX.utils.encode_cell({ r: r, c: 4 }); // E column
-      if (ws[addr]) { ws[addr].t = 'n'; ws[addr].z = '#,##0.00'; }
-    }
+    // Format numeric money columns
+    ['E','G','H'].forEach(function(col){
+      for (var r = 1; r <= range.e.r; r++) {
+        var addr = col + (r+1);
+        if (ws[addr]) { ws[addr].t = 'n'; ws[addr].z = '#,##0.00'; }
+      }
+    });
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Payments');
     var today = new Date().toISOString().slice(0,10);
