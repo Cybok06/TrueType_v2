@@ -1,3 +1,4 @@
+# taxes_bp.py
 from flask import Blueprint, render_template, request, jsonify
 from db import db
 from bson import ObjectId
@@ -11,6 +12,7 @@ orders_col   = db["orders"]            # for price/tax/qty + legacy bdc_id
 tax_col      = db["tax_records"]       # P-Tax payments (outflows)
 bdc_col      = db["bdc"]               # BDC master
 sbdc_col     = db["s_bdc_payment"]     # central S-BDC payments (from orders/manual)
+payments_col = db["payments"]          # inbound receipts (confirmed)
 
 # ---- numeric tolerance for float sums ----
 _EPS = 0.005
@@ -29,6 +31,13 @@ def _fmt2(n):
         return f"{float(n):,.2f}"
     except Exception:
         return "0.00"
+
+def _last4(acc_number):
+    try:
+        s = str(acc_number or "")
+        return s[-4:] if len(s) >= 4 else s
+    except Exception:
+        return ""
 
 def _ptax_per_l(order):
     """Read per-litre P-Tax from the order (accept p_tax or p-tax)."""
@@ -84,7 +93,205 @@ def taxes_home():
     except Exception:
         omc_names = []
 
-    return render_template("partials/taxes.html", banks=banks, bdcs=bdcs, omc_names=sorted([o for o in omc_names if isinstance(o, str)]))
+    return render_template(
+        "partials/taxes.html",
+        banks=banks,
+        bdcs=bdcs,
+        omc_names=sorted([o for o in omc_names if isinstance(o, str)])
+    )
+
+# ---------------- NEW: Banks balances (totals across all banks + per-bank) -------------
+@taxes_bp.route("/taxes/banks-balances", methods=["GET"])
+def taxes_banks_balances():
+    """
+    Response:
+    {
+      "status":"success",
+      "total_all": 12345.67,
+      "banks":[
+        {
+          "bank_id": "...",
+          "bank_name": "...",
+          "account_name": "...",
+          "last4": "1234",
+          "in_total": 1000.0,
+          "ptax_out_total": 200.0,
+          "bdc_out_total": 300.0,
+          "balance": 500.0
+        }, ...
+      ],
+      "top_bank_id": "..."
+    }
+    """
+    try:
+        # Preload all banks
+        banks = list(accounts_col.find({}, {"bank_name":1, "account_name":1, "account_number":1}))
+        if not banks:
+            return jsonify({"status":"success", "total_all": 0.0, "banks": [], "top_bank_id": None})
+
+        # ---- 1) Confirmed inbound payments grouped by (bank_name, last4)
+        pay_map = {}
+        try:
+            pay_rows = list(payments_col.aggregate([
+                {"$match": {"status": "confirmed"}},
+                {"$group": {
+                    "_id": {"bn":"$bank_name", "last4":"$account_last4"},
+                    "total": {"$sum": "$amount"}
+                }}
+            ]))
+            for r in pay_rows:
+                key = (r["_id"].get("bn"), r["_id"].get("last4"))
+                pay_map[key] = _f(r.get("total"))
+        except Exception:
+            pay_map = {}
+
+        # ---- 2) P-Tax outflows grouped by source_bank_id
+        ptax_map = {}
+        try:
+            ptax_rows = list(tax_col.aggregate([
+                {"$match": {"type": {"$regex": r"^p[\s_-]*tax$", "$options": "i"}}},
+                {"$group": {"_id": "$source_bank_id", "total": {"$sum": "$amount"}}}
+            ]))
+            for r in ptax_rows:
+                bid = str(r["_id"]) if r.get("_id") else None
+                if bid:
+                    ptax_map[bid] = _f(r.get("total"))
+        except Exception:
+            ptax_map = {}
+
+        # ---- 3) BDC outflows from bank_paid_history grouped by bank_id
+        bdc_map = {}
+        try:
+            bdc_rows = list(sbdc_col.aggregate([
+                {"$match": {"bank_paid_history": {"$exists": True, "$ne": []}}},
+                {"$unwind": "$bank_paid_history"},
+                {"$group": {
+                    "_id": "$bank_paid_history.bank_id",
+                    "total": {"$sum": "$bank_paid_history.amount"}
+                }}
+            ]))
+            for r in bdc_rows:
+                bid = str(r["_id"]) if r.get("_id") else None
+                if bid:
+                    bdc_map[bid] = _f(r.get("total"))
+        except Exception:
+            bdc_map = {}
+
+        # ---- Compose per-bank balances
+        result = []
+        total_all = 0.0
+        top_bank_id = None
+        top_balance = float("-inf")
+
+        for b in banks:
+            bid = str(b["_id"])
+            bn  = b.get("bank_name") or ""
+            acc_num = b.get("account_number") or ""
+            last4 = _last4(acc_num)
+
+            in_total = pay_map.get((bn, last4), 0.0)
+            ptax_out = ptax_map.get(bid, 0.0)
+            bdc_out  = bdc_map.get(bid, 0.0)
+            balance  = round(in_total - ptax_out - bdc_out, 2)
+
+            total_all += balance
+            if balance > top_balance:
+                top_balance = balance
+                top_bank_id = bid
+
+            result.append({
+                "bank_id": bid,
+                "bank_name": bn,
+                "account_name": b.get("account_name") or "",
+                "last4": last4,
+                "in_total": round(in_total, 2),
+                "ptax_out_total": round(ptax_out, 2),
+                "bdc_out_total": round(bdc_out, 2),
+                "balance": balance
+            })
+
+        # Sort banks by balance desc for convenience (optional)
+        result.sort(key=lambda x: x["balance"], reverse=True)
+
+        return jsonify({
+            "status": "success",
+            "total_all": round(total_all, 2),
+            "banks": result,
+            "top_bank_id": top_bank_id
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ---------------- NEW: Single bank balance (for when user selects a bank) ---------------
+@taxes_bp.route("/taxes/banks/<bank_id>/balance", methods=["GET"])
+def taxes_bank_balance(bank_id):
+    try:
+        if not ObjectId.is_valid(bank_id):
+            return jsonify({"status":"error", "message":"Invalid bank id"}), 400
+
+        b = accounts_col.find_one({"_id": ObjectId(bank_id)}, {"bank_name":1, "account_name":1, "account_number":1})
+        if not b:
+            return jsonify({"status":"error", "message":"Bank not found"}), 404
+
+        bn = b.get("bank_name") or ""
+        last4 = _last4(b.get("account_number") or "")
+
+        # inbound
+        in_row = next(payments_col.aggregate([
+            {"$match": {"status": "confirmed", "bank_name": bn, "account_last4": last4}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]), None)
+        in_total = _f(in_row.get("total")) if in_row else 0.0
+
+        # ptax out
+        ptax_row = next(tax_col.aggregate([
+            {"$match": {"type": {"$regex": r"^p[\s_-]*tax$", "$options": "i"}, "source_bank_id": ObjectId(bank_id)}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]), None)
+        ptax_out = _f(ptax_row.get("total")) if ptax_row else 0.0
+
+        # bdc out
+        bdc_row = next(sbdc_col.aggregate([
+            {"$match": {"bank_paid_history": {"$exists": True, "$ne": []}}},
+            {"$unwind": "$bank_paid_history"},
+            {"$match": {"bank_paid_history.bank_id": ObjectId(bank_id)}},
+            {"$group": {"_id": None, "total": {"$sum": "$bank_paid_history.amount"}}}
+        ]), None)
+        bdc_out = _f(bdc_row.get("total")) if bdc_row else 0.0
+
+        balance = round(in_total - ptax_out - bdc_out, 2)
+
+        return jsonify({
+            "status": "success",
+            "bank": {
+                "bank_id": str(b["_id"]),
+                "bank_name": bn,
+                "account_name": b.get("account_name") or "",
+                "last4": last4
+            },
+            "in_total": round(in_total, 2),
+            "ptax_out_total": round(ptax_out, 2),
+            "bdc_out_total": round(bdc_out, 2),
+            "balance": balance
+        })
+    except Exception as e:
+        return jsonify({"status":"error", "message": str(e)}), 500
+
+# ---------------- NEW: Bank with highest balance (for auto-select button) --------------
+@taxes_bp.route("/taxes/bank-with-max-balance", methods=["GET"])
+def taxes_bank_with_max_balance():
+    try:
+        data = taxes_banks_balances().get_json()  # reuse computation
+        if not data or data.get("status") != "success":
+            return jsonify({"status":"error", "message":"Unable to compute balances"}), 500
+        top_id = data.get("top_bank_id")
+        if not top_id:
+            return jsonify({"status":"success", "bank": None})
+        # also return its computed row
+        top_row = next((b for b in data.get("banks", []) if b.get("bank_id") == top_id), None)
+        return jsonify({"status":"success", "bank": top_row})
+    except Exception as e:
+        return jsonify({"status":"error", "message": str(e)}), 500
 
 # ---------------- API: OMC P-Tax debts (includes avg S-Tax & total qty) ----------------
 @taxes_bp.route("/taxes/omc-debts", methods=["GET"])
@@ -306,7 +513,7 @@ def taxes_pay_bdc():
                 "$or": [
                     {"payment_type": {"$regex": r"^cash$", "$options": "i"}},
                     {"payment_type": {"$regex": r"^credit$", "$options": "i"}},
-                    {"payment_type": {"$regex": r"^from\\s*account$", "$options": "i"}},
+                    {"payment_type": {"$regex": r"^from\s*account$", "$options": "i"}},
                 ],
                 "bdc_id": bdc_oid
             }},
@@ -332,7 +539,7 @@ def taxes_pay_bdc():
                 "$or": [
                     {"payment_type": {"$regex": r"^cash$", "$options": "i"}},
                     {"payment_type": {"$regex": r"^credit$", "$options": "i"}},
-                    {"payment_type": {"$regex": r"^from\\s*account$", "$options": "i"}},
+                    {"payment_type": {"$regex": r"^from\s*account$", "$options": "i"}},
                 ],
                 "bdc_id": bdc_oid
             }},
