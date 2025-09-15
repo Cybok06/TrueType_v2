@@ -3,20 +3,71 @@ from datetime import datetime
 from bson import ObjectId, Regex
 from db import db
 import random, string, re
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 client_order_bp = Blueprint('client_order', __name__, template_folder='templates')
 
-orders_collection = db["orders"]
-products_collection = db["products"]
-trucks_collection = db["trucks"]
-truck_orders_collection = db["truck_orders"]
-truck_numbers_collection = db["truck_numbers"]
+orders_collection          = db["orders"]
+products_collection        = db["products"]
+trucks_collection          = db["trucks"]
+truck_orders_collection    = db["truck_orders"]
+truck_numbers_collection   = db["truck_numbers"]
 
-# Indexes
-orders_collection.create_index("order_id", unique=True, sparse=True)
-truck_numbers_collection.create_index([("vehicle_number_norm", 1)], name="vehicle_number_norm_idx")
-truck_numbers_collection.create_index([("client_id", 1), ("vehicle_number_norm", 1)], name="client_vehicle_norm_idx")
+# --------------------------
+# Indexes (make idempotent)
+# --------------------------
+def ensure_indexes():
+    # Orders: unique order_id
+    try:
+        orders_collection.create_index("order_id", unique=True, sparse=True, background=True)
+    except Exception:
+        pass
+
+    # Truck numbers: remove any legacy UNIQUE single-field index on vehicle_number_norm,
+    # then create the CORRECT UNIQUE compound index (client_id, vehicle_number_norm).
+    try:
+        info = truck_numbers_collection.index_information()
+        # Drop any unique index that is ONLY on vehicle_number_norm
+        for name, spec in info.items():
+            keys = spec.get("key") or spec.get("key_pattern") or []
+            # Normalize keys to list of tuples
+            if isinstance(keys, dict):
+                keys = list(keys.items())
+            is_only_norm = (len(keys) == 1 and keys[0][0] == "vehicle_number_norm" and keys[0][1] == 1)
+            if is_only_norm and spec.get("unique"):
+                try:
+                    truck_numbers_collection.drop_index(name)
+                except Exception:
+                    pass
+
+        # Also drop by known legacy name if present
+        if "vehicle_number_norm_unique" in info:
+            try:
+                truck_numbers_collection.drop_index("vehicle_number_norm_unique")
+            except Exception:
+                pass
+
+        # Create the correct UNIQUE compound index
+        truck_numbers_collection.create_index(
+            [("client_id", 1), ("vehicle_number_norm", 1)],
+            name="client_vehicle_norm_unique",
+            unique=True,
+            background=True
+        )
+
+        # Keep a NON-UNIQUE single-field index for lookups (ok if it already exists)
+        truck_numbers_collection.create_index(
+            [("vehicle_number_norm", 1)],
+            name="vehicle_number_norm_idx",
+            background=True
+        )
+    except OperationFailure:
+        # If there are true duplicates per (client_id, vehicle_number_norm), index creation would fail.
+        # In that rare case, you should clean duplicates first (keep newest by updated_at).
+        # Leaving silent to avoid breaking runtime; see comment block below for a cleanup script.
+        pass
+
+ensure_indexes()
 
 def _to_int_qty(q):
     if not q:
@@ -46,13 +97,13 @@ def submit_order():
         return redirect(url_for('client_login'))
 
     if request.method == 'POST':
-        product = request.form.get('product')
-        quantity = _to_int_qty(request.form.get('quantity'))
-        region = request.form.get('region')
-        vehicle_number = (request.form.get('vehicle_number') or "").strip()
-        driver_name = (request.form.get('driver_name') or "").strip()
-        driver_phone = (request.form.get('driver_phone') or "").strip()
-        order_type = (request.form.get('order_type') or '').strip().lower()
+        product       = request.form.get('product')
+        quantity      = _to_int_qty(request.form.get('quantity'))
+        region        = request.form.get('region')
+        vehicle_number= (request.form.get('vehicle_number') or "").strip()
+        driver_name   = (request.form.get('driver_name') or "").strip()
+        driver_phone  = (request.form.get('driver_phone') or "").strip()
+        order_type    = (request.form.get('order_type') or '').strip().lower()
 
         if not all([product, quantity, region, vehicle_number, driver_name, driver_phone, order_type]):
             flash("All fields are required.", "danger")
@@ -93,6 +144,7 @@ def submit_order():
         if truck:
             base_order["truck_id"] = truck["_id"]
 
+        # insert order with collision-proof code generation
         while True:
             code = _generate_order_id()
             doc = dict(base_order)
@@ -102,6 +154,7 @@ def submit_order():
                 order_mongo_id = result.inserted_id
                 break
             except DuplicateKeyError:
+                # rare: order_id collision, just retry
                 continue
 
         if truck:
@@ -119,10 +172,12 @@ def submit_order():
                 "created_at": datetime.utcnow()
             })
 
-        # Upsert into per-client recent trucks address book
+        # Upsert into per-client recent trucks address book (race-safe)
+        client_oid = _maybe_oid(session.get('client_id'))
         vehicle_number_norm = _norm_plate(vehicle_number)
+        flt = {"client_id": client_oid, "vehicle_number_norm": vehicle_number_norm}
         upsert_doc = {
-            "client_id": _maybe_oid(session.get('client_id')),
+            "client_id": client_oid,
             "vehicle_number": vehicle_number,
             "vehicle_number_norm": vehicle_number_norm,
             "destination": region,
@@ -130,11 +185,20 @@ def submit_order():
             "driver_phone": driver_phone,
             "updated_at": datetime.utcnow(),
         }
-        truck_numbers_collection.update_one(
-            {"client_id": _maybe_oid(session.get('client_id')), "vehicle_number_norm": vehicle_number_norm},
-            {"$set": upsert_doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
-            upsert=True
-        )
+
+        # Retry once on DuplicateKeyError to tolerate concurrent upserts
+        for _ in range(2):
+            try:
+                truck_numbers_collection.update_one(
+                    flt,
+                    {"$set": upsert_doc, "$setOnInsert": {"created_at": datetime.utcnow()}},
+                    upsert=True
+                )
+                break
+            except DuplicateKeyError:
+                # If another request inserted it this instant, just convert to plain update
+                truck_numbers_collection.update_one(flt, {"$set": upsert_doc}, upsert=False)
+                break
 
         flash(f"Order submitted successfully! Your Order ID is {code}", "success")
         return redirect(url_for('client_order.submit_order'))
@@ -155,7 +219,7 @@ def submit_order():
     recent_trucks = []
     for doc in recents_cursor:
         norm = doc.get("vehicle_number_norm")
-        if norm in seen: 
+        if norm in seen:
             continue
         seen.add(norm)
         recent_trucks.append({
@@ -170,4 +234,26 @@ def submit_order():
     return render_template('client/client_order.html',
                            products=products, trucks=trucks, recent_trucks=recent_trucks)
 
-# (Keep your /client/truck_suggest and /client/truck_lookup if you still want typeahead.)
+# ----------------------------
+# (Optional) ONE-TIME CLEANUP
+# If index creation fails due to true duplicates for the SAME client & plate,
+# run a maintenance script to keep the newest (by updated_at) and delete others,
+# then call ensure_indexes() again.
+# ----------------------------
+# from pymongo import DESCENDING
+# def dedupe_truck_numbers():
+#     pipeline = [
+#         {"$group": {
+#             "_id": {"client_id": "$client_id", "vehicle_number_norm": "$vehicle_number_norm"},
+#             "ids": {"$push": {"_id": "$._id", "updated_at": "$updated_at"}},
+#             "count": {"$sum": 1}
+#         }},
+#         {"$match": {"count": {"$gt": 1}}}
+#     ]
+#     for g in truck_numbers_collection.aggregate(pipeline):
+#         docs = sorted(g["ids"], key=lambda d: d.get("updated_at") or datetime.min, reverse=True)
+#         keep = docs[0]["_id"]
+#         remove_ids = [d["_id"] for d in docs[1:]]
+#         if remove_ids:
+#             truck_numbers_collection.delete_many({"_id": {"$in": remove_ids}})
+#     ensure_indexes()
