@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Order History | Oil ERP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <style>
+    body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
+    .navbar-brand img { height: 40px; }
+    .page-wrapper { animation: slideIn 0.6s ease-out; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(20px);} to { opacity: 1; transform: translateY(0);} }
+
+    .summary-card {
+      background: linear-gradient(135deg, #007bff, #00c9a7);
+      color: #fff; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem;
+    }
+    .summary-card h5 { font-weight: bold; }
+
+    .badge-status { font-size: 13px; padding: 4px 10px; border-radius: 20px; text-transform: capitalize; }
+    .badge-pending { background-color: #ffc107; color: #000; }
+    .badge-approved { background-color: #28a745; color: #fff; }
+    .badge-rejected { background-color: #dc3545; color: #fff; }
+
+    .profile-img { width: 90px; height: 90px; object-fit: cover; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .card-profile { background-color: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.05); }
+
+    .table thead th { background-color: #007bff; color: white; text-align: center; position: sticky; top: 0; z-index: 1; }
+    .table td { vertical-align: middle; text-align: center; }
+    .text-money { text-align: right; white-space: nowrap; }
+
+    .back-link { display: inline-flex; align-items: center; margin-bottom: 20px; color: #0d6efd; text-decoration: none; font-weight: 500; }
+    .back-link i { margin-right: 6px; }
+
+    .filters-bar { background:#fff; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,.05); padding:12px; margin-bottom:14px; }
+    .filters-bar .form-control, .filters-bar .form-check-input { font-size: .95rem; }
+
+    @media (max-width: 768px) {
+      .summary-card, .card-profile { text-align: center; }
+      .profile-img { margin-bottom: 10px; }
+      .filters-bar .row > div { margin-bottom: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-light bg-white shadow-sm px-3">
+  <a class="navbar-brand d-flex align-items-center" href="#">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Oil ERP Logo" />
+  </a>
+</nav>
+
+<div class="container mt-4 page-wrapper">
+
+  <a href="/client/dashboard" class="back-link"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+
+  <!-- Summary + Profile -->
+  <div class="row g-4 mb-4">
+    <div class="col-lg-6">
+      {% if latest_approved %}
+      <div class="summary-card">
+        <h5 class="mb-3">Latest Approved Order</h5>
+        <p class="mb-1"><i class="bi bi-calendar-event"></i> <strong>Due Date:</strong> {{ latest_approved.due_date.strftime('%Y-%m-%d') if latest_approved.due_date }}</p>
+        <p class="mb-1"><i class="bi bi-wallet2"></i> <strong>Total Debt:</strong> GHS {{ "{:,.2f}".format(latest_approved.total_debt or 0) }}</p>
+        <p class="mb-1 text-success"><i class="bi bi-check-circle-fill"></i> <strong>Amount Paid:</strong> GHS {{ "{:,.2f}".format(total_paid or 0) }}</p>
+        <p class="mb-2 text-danger"><i class="bi bi-x-circle-fill"></i> <strong>Amount Left:</strong> GHS {{ "{:,.2f}".format(amount_left or 0) }}</p>
+        <span class="badge bg-light text-dark">Status: {{ latest_approved.status|capitalize }}</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card-profile">
+        <div class="d-flex align-items-center gap-3 flex-column flex-sm-row">
+          <img src="{{ client.image_url or 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png' }}" class="profile-img" alt="Client Image">
+          <div>
+            <h5 class="fw-bold mb-1">{{ client.name }}</h5>
+            <p class="mb-1"><strong>Client ID:</strong> {{ client.client_id }}</p>
+            <p class="mb-1"><strong>Phone:</strong> {{ client.phone }}</p>
+            {% if client.email %}<p class="mb-1"><strong>Email:</strong> {{ client.email }}</p>{% endif %}
+            {% if client.location %}<p class="mb-1"><strong>Location:</strong> {{ client.location }}</p>{% endif %}
+            <p class="mb-1"><strong>Status:</strong> <span class="badge bg-success">{{ client.status }}</span></p>
+            <p class="mb-0"><strong>Registered:</strong> {{ client.date_registered.strftime('%Y-%m-%d %H:%M') if client.date_registered }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-bar">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-sm-6 col-md-3">
+        <label class="form-label mb-1">Start date</label>
+        <input type="date" id="filterStart" class="form-control">
+      </div>
+      <div class="col-12 col-sm-6 col-md-3">
+        <label class="form-label mb-1">End date</label>
+        <input type="date" id="filterEnd" class="form-control">
+      </div>
+      <div class="col-12 col-sm-6 col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" id="filterDebt">
+          <label class="form-check-label" for="filterDebt">Only with debt (Left ≠ 0)</label>
+        </div>
+      </div>
+      <div class="col-12 col-sm-6 col-md-3 text-sm-end">
+        <button class="btn btn-primary me-2 w-100 w-sm-auto" id="applyFilters"><i class="bi bi-funnel"></i> Apply</button>
+        <button class="btn btn-outline-secondary w-100 w-sm-auto mt-2 mt-sm-0" id="resetFilters"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Table -->
+  <h5 class="fw-bold mb-3"><i class="bi bi-file-earmark-text"></i> Order History</h5>
+  {% if orders %}
+  <div class="table-responsive">
+    <table id="ordersTable" class="table table-bordered table-hover align-middle">
+      <thead>
+        <tr class="text-nowrap">
+          <th>Date</th>
+          <th>Product</th>
+          <th>Order Type</th>
+          <th>Qty</th>
+          <th>Vehicle</th>
+          <th>Region</th>
+          <th>Depot</th>
+          <th>Status</th>
+          <th>TTS</th>
+          <th>NPA</th>
+          <th class="text-money">Debt (GHS)</th>
+          <th class="text-money">Paid (GHS)</th>
+          <th class="text-money">Left (GHS)</th>
+          <th>Due Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        {% set tts = (order.tts_status or '—') %}
+        {% set npa = (order.npa_status or '—') %}
+        <tr>
+          <td class="date-cell">{{ order.date.strftime('%Y-%m-%d') if order.date }}</td>
+          <td>{{ order.product }}</td>
+          <td class="text-uppercase">
+            {% if order.order_type == "s_bdc" %} S-BDC
+            {% elif order.order_type == "s_tax" %} S-Tax
+            {% elif order.order_type == "combo" %} Combo
+            {% else %} —{% endif %}
+          </td>
+          <td>{{ "{:,}".format((order.quantity or 0)|int) }}</td>
+          <td>{{ order.vehicle_number }}</td>
+          <td>{{ order.region }}</td>
+          <td>{{ order.depot }}</td>
+          <td>
+            {% set status = order.status|lower %}
+            <span class="badge px-4 py-2 fw-semibold text-uppercase rounded-pill
+              {% if status == 'pending' %} bg-warning text-dark
+              {% elif status == 'approved' %} bg-success text-white
+              {% elif status == 'rejected' %} bg-danger text-white
+              {% else %} bg-secondary text-white{% endif %}">
+              {{ order.status|capitalize }}
+            </span>
+          </td>
+
+          <td><span class="badge
+              {% if tts|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+              {% elif tts|lower in ['brv check unpass','failed'] %}bg-danger
+              {% elif tts == '—' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">{{ tts }}</span></td>
+
+          <td><span class="badge
+              {% if npa|lower in ['released','loaded','approved','goodstanding'] %}bg-success
+              {% elif npa|lower in ['brv check unpass','failed'] %}bg-danger
+              {% elif npa == '—' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">{{ npa }}</span></td>
+
+          <td class="text-money debt-cell">{{ "{:,.2f}".format(order.total_debt or 0) }}</td>
+          <td class="text-money paid-cell">{{ "{:,.2f}".format(order.amount_paid or 0) }}</td>
+          <td class="text-money left-cell">0.00</td>
+          <td>{{ order.due_date.strftime('%Y-%m-%d') if order.due_date }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="alert alert-info">You have not submitted any orders yet.</div>
+  {% endif %}
+</div>
+
+<script>
+// Money helpers
+function parseMoney(txt){ if(!txt) return 0; const n = Number(String(txt).replace(/[^0-9.-]/g,'')); return isFinite(n) ? n : 0; }
+const ghFmt = new Intl.NumberFormat('en-GH',{minimumFractionDigits:2, maximumFractionDigits:2});
+function fmt(n){ return ghFmt.format(Number(n||0)); }
+
+// Compute Left per row, format all money cells
+function computeLeftAndFormat(){
+  const rows = document.querySelectorAll('#ordersTable tbody tr');
+  rows.forEach(tr=>{
+    const debtCell = tr.querySelector('.debt-cell');
+    const paidCell = tr.querySelector('.paid-cell');
+    const leftCell = tr.querySelector('.left-cell');
+    const debt = parseMoney(debtCell?.textContent);
+    const paid = parseMoney(paidCell?.textContent);
+    const left = debt - paid;
+    if (debtCell) debtCell.textContent = fmt(debt);
+    if (paidCell) paidCell.textContent = fmt(paid);
+    if (leftCell){
+      leftCell.textContent = fmt(left);
+      leftCell.classList.toggle('text-success', left < 0);
+      leftCell.classList.toggle('text-danger', left > 0);
+    }
+  });
+}
+
+// Filter rows
+function applyFilters(){
+  const startStr = document.getElementById('filterStart').value;
+  const endStr   = document.getElementById('filterEnd').value;
+  const onlyDebt = document.getElementById('filterDebt').checked;
+
+  const start = startStr ? new Date(startStr+'T00:00:00') : null;
+  const end   = endStr   ? new Date(endStr  +'T23:59:59') : null;
+
+  const rows = document.querySelectorAll('#ordersTable tbody tr');
+  rows.forEach(tr=>{
+    const dateTxt = tr.querySelector('.date-cell')?.textContent?.trim() || '';
+    const leftTxt = tr.querySelector('.left-cell')?.textContent || '0';
+    const rowDate = dateTxt ? new Date(dateTxt+'T12:00:00') : null;
+    const leftVal = parseMoney(leftTxt);
+
+    let ok = true;
+    if (start && rowDate && rowDate < start) ok = false;
+    if (end   && rowDate && rowDate > end)   ok = false;
+    if ((start || end) && !rowDate) ok = false;
+    if (onlyDebt && Math.abs(leftVal) < 0.005) ok = false;
+
+    tr.style.display = ok ? '' : 'none';
+  });
+}
+
+function resetFilters(){
+  document.getElementById('filterStart').value = '';
+  document.getElementById('filterEnd').value = '';
+  document.getElementById('filterDebt').checked = false;
+  document.querySelectorAll('#ordersTable tbody tr').forEach(tr=> tr.style.display = '');
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  computeLeftAndFormat();
+  document.getElementById('applyFilters')?.addEventListener('click', applyFilters);
+  document.getElementById('resetFilters')?.addEventListener('click', resetFilters);
+  document.getElementById('filterStart')?.addEventListener('keydown', e=>{ if(e.key==='Enter'){ applyFilters(); } });
+  document.getElementById('filterEnd')?.addEventListener('keydown', e=>{ if(e.key==='Enter'){ applyFilters(); } });
+});
+</script>
+</body>
+</html>

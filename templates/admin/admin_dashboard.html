@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- External Libraries -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+
+  <style>
+    .badge-blink { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; font-size:.7rem; line-height:1; border-radius:999px; animation:blink .9s linear infinite; box-shadow:0 0 .35rem rgba(220,53,69,.6); }
+    @keyframes blink { 50% { opacity:.25 } }
+
+    .submenu { overflow:hidden; max-height:0; transition:max-height .28s ease; pointer-events:none; }
+    .submenu.open { pointer-events:auto; }
+    .sidebar .dropdown-toggle { cursor:pointer; user-select:none; }
+  </style>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/assistant_dashboard.css') }}">
+</head>
+<body>
+  {% include 'partials/navbar.html' %}
+
+  {# ---- Permission context ---- #}
+  {% set ALLOWED = (allowed_slugs or []) | list %}
+  {% set SUPER = is_superadmin or False %}
+  {% macro can(slug) -%}{{ '1' if SUPER or (slug in ALLOWED) else '' }}{%- endmacro %}
+
+  <!-- Initial counts JSON -->
+  <script id="initialCounts" type="application/json">
+  {{ {
+    "unapproved_orders_count": unapproved_orders_count|default(0),
+    "unconfirmed_payments_count": unconfirmed_payments_count|default(0),
+    "unconfirmed_truck_payments_count": unconfirmed_truck_payments_count|default(0),
+    "truck_debtors_count": truck_debtors_count|default(0),
+    "omc_debtors_count": omc_debtors_count|default(0),
+    "omc_outstanding_total": omc_outstanding_total|default(0.0),
+    "bdc_debtors_count": bdc_debtors_count|default(0),
+    "bdc_outstanding_total": bdc_outstanding_total|default(0.0)
+  }|tojson }}
+  </script>
+
+  <!-- Toggle Button -->
+  <button id="toggleSidebar" class="btn btn-outline-primary position-fixed top-0 start-0 m-2" style="z-index:1100;">
+    <i class="bi bi-list fs-4"></i>
+  </button>
+
+  <!-- Sidebar -->
+  <div class="sidebar shadow" id="sidebar">
+    <div class="text-center mt-5 mb-4">
+      <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif"
+           alt="Company Logo" class="img-fluid logo-img"
+           style="width:120px; height:120px; object-fit:contain;">
+    </div>
+
+    {# DASHBOARD #}
+    {% if SUPER or ('dashboard:view' in ALLOWED) %}
+      <a class="sidebar-link" data-url="/home">
+        <i class="bi bi-speedometer2 me-2"></i>DASHBOARD
+      </a>
+    {% endif %}
+
+    {# CLIENTS #}
+    {% set show_clients = SUPER or ('clients:register' in ALLOWED) or ('clients:view' in ALLOWED) %}
+    {% if show_clients %}
+      <div class="dropdown">
+        <a class="sidebar-link dropdown-toggle js-dropdown" href="#" data-target="#clientsMenu" aria-expanded="false">
+          <i class="bi bi-people-fill me-2"></i>CLIENTS
+        </a>
+        <div class="submenu" id="clientsMenu">
+          {% if SUPER or ('clients:register' in ALLOWED) %}
+            <a class="sidebar-link ps-4" data-url="/admin/register_client">
+              <i class="bi bi-person-plus-fill me-2"></i>REGISTER CLIENT
+            </a>
+          {% endif %}
+          {% if SUPER or ('clients:view' in ALLOWED) %}
+            <a class="sidebar-link ps-4" data-url="/client_list_partial">
+              <i class="bi bi-card-list me-2"></i>VIEW REGISTERED CLIENTS
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# ORDERS #}
+    {% set show_orders = SUPER or ('orders:review' in ALLOWED) or ('orders:approved' in ALLOWED) %}
+    {% if show_orders %}
+      <div class="dropdown">
+        <a class="sidebar-link dropdown-toggle d-flex justify-content-between align-items-center js-dropdown"
+           href="#" data-target="#ordersMenu" aria-expanded="false">
+          <span><i class="bi bi-bag-check-fill me-2"></i>ORDERS</span>
+          <span id="badge-orders" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+        </a>
+        <div class="submenu" id="ordersMenu">
+          {% if SUPER or ('orders:review' in ALLOWED) %}
+            <a class="sidebar-link d-flex justify-content-between align-items-center ps-4" data-url="/orders">
+              <span><i class="bi bi-search me-2"></i>REVIEW ORDERS</span>
+              <span id="badge-orders-sub" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+            </a>
+          {% endif %}
+          {% if SUPER or ('orders:approved' in ALLOWED) %}
+            <a class="sidebar-link ps-4" href="/approved_orders" target="_blank">
+              <i class="bi bi-box-arrow-up-right me-2"></i>VIEW APPROVED ORDERS
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# PAYMENTS #}
+    {% set show_payments = SUPER or ('payments:receive' in ALLOWED) %}
+    {% if show_payments %}
+      <div class="dropdown">
+        <a class="sidebar-link dropdown-toggle d-flex justify-content-between align-items-center js-dropdown"
+           href="#" data-target="#paymentsMenu" aria-expanded="false">
+          <span><i class="bi bi-cash-coin me-2"></i>CLIENT PAYMENTS</span>
+          <span id="badge-payments" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+        </a>
+        <div class="submenu" id="paymentsMenu">
+          {% if SUPER or ('payments:receive' in ALLOWED) %}
+            <a class="sidebar-link d-flex justify-content-between align-items-center ps-4" data-url="/payments">
+              <span><i class="bi bi-receipt me-2"></i>RECEIVED PAYMENT</span>
+              <span id="badge-payments-sub" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# STATEMENTS #}
+    {% if SUPER or ('reports:view' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/reports">
+        <span><i class="bi bi-file-earmark-bar-graph me-2"></i>STATEMENTS</span>
+      </a>
+    {% endif %}
+
+    {# DEBTORS LIST #}
+    {% if SUPER or ('debtors:list' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/debtors/list">
+        <span><i class="bi bi-table me-2"></i>DEBTORS LIST</span>
+      </a>
+    {% endif %}
+
+    
+
+   
+
+    {# TAX-OMC #}
+    {% if SUPER or ('tax:view' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/taxes">
+        <span><i class="bi bi-receipt-cutoff me-2"></i>OMC-BDC PAYMENTS</span>
+      </a>
+    {% endif %}
+
+    {# BANK ACCOUNTS #}
+    {% if SUPER or ('bank:view' in ALLOWED) %}
+      <a class="sidebar-link" data-url="/bank-accounts">
+        <i class="bi bi-bank me-2"></i>BANK ACCOUNTS
+      </a>
+    {% endif %}
+
+    {# DELIVERIES #}
+    {% if SUPER or ('deliveries:view' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/deliveries">
+        <span><i class="bi bi-truck me-2"></i>DELIVERIES</span>
+      </a>
+    {% endif %}
+
+   
+    {# TRUCK MANAGEMENT #}
+    {% set show_truck =
+      SUPER or ('trucks:manage' in ALLOWED) or ('trucks:payments' in ALLOWED) or ('trucks:debtors' in ALLOWED)
+    %}
+    {% if show_truck %}
+      <div class="dropdown">
+        <a class="sidebar-link dropdown-toggle d-flex justify-content-between align-items-center js-dropdown"
+           href="#" data-target="#truckMenu" aria-expanded="false">
+          <span><i class="bi bi-truck-front-fill me-2"></i>TRUCK MANAGEMENT</span>
+          <span id="badge-truck" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+        </a>
+        <div class="submenu" id="truckMenu">
+          {% if SUPER or ('trucks:manage' in ALLOWED) %}
+            <a class="sidebar-link ps-4" data-url="/trucks">
+              <i class="bi bi-gear me-2"></i>MANAGE TRUCKS
+            </a>
+          {% endif %}
+          {% if SUPER or ('trucks:payments' in ALLOWED) %}
+            <a class="sidebar-link ps-4 d-flex justify-content-between align-items-center" data-url="/admin/truck_payments">
+              <span><i class="bi bi-cash-stack me-2"></i>FREIGHTS TRANSACTIONS</span>
+              <span id="badge-truck-sub" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+            </a>
+          {% endif %}
+          {% if SUPER or ('trucks:debtors' in ALLOWED) %}
+            <a class="sidebar-link ps-4" data-url="/truck_debtors">
+              <i class="bi bi-exclamation-diamond-fill text-danger me-2"></i>DEBTORS
+            </a>
+            <span id="badge-truck-debtors" class="badge bg-danger ms-4 mt-1" style="display:none"></span>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+
+    {# SETTINGS #}
+    {% if SUPER or ('settings:view' in ALLOWED) %}
+      <a class="sidebar-link" data-url="/admin/settings">
+        <i class="bi bi-gear-fill me-2"></i>SETTINGS
+      </a>
+    {% endif %}
+
+    <hr class="text-light mx-3" />
+    <a class="sidebar-link" href="/logout"><i class="bi bi-box-arrow-right me-2"></i>LOGOUT</a>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content" id="main-content">
+   
+    <div id="content-area">
+      <div class="d-flex align-items-center text-muted">
+        <div class="spinner-border text-secondary me-2" role="status" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar toggle & dropdowns -->
+  <script>
+    document.getElementById("toggleSidebar").addEventListener("click", function () {
+      document.getElementById("sidebar").classList.toggle("collapsed");
+      document.getElementById("main-content").classList.toggle("expanded");
+    });
+
+    const sidebarLinks = document.querySelectorAll(".sidebar a.sidebar-link");
+    sidebarLinks.forEach(link => {
+      link.addEventListener("click", function () {
+        const isDropdownToggle = this.classList.contains('js-dropdown');
+        if (!isDropdownToggle && window.innerWidth < 992) {
+          document.getElementById("sidebar").classList.add("collapsed");
+          document.getElementById("main-content").classList.add("expanded");
+        }
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const tts = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      tts.forEach(function (el) { new bootstrap.Tooltip(el); });
+    });
+
+    (function () {
+      function toggleSubmenu(toggleEl) {
+        const sel = toggleEl.getAttribute('data-target');
+        if (!sel || !sel.startsWith('#')) return;
+        const menu = document.querySelector(sel);
+        if (!menu) return;
+        const isOpen = menu.classList.contains('open');
+        if (isOpen) {
+          menu.style.maxHeight = menu.scrollHeight + 'px';
+          requestAnimationFrame(() => { menu.style.maxHeight = '0px'; });
+          menu.classList.remove('open');
+          toggleEl.setAttribute('aria-expanded', 'false');
+        } else {
+          menu.classList.add('open');
+          menu.style.maxHeight = menu.scrollHeight + 'px';
+          toggleEl.setAttribute('aria-expanded', 'true');
+        }
+      }
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.js-dropdown').forEach(function (toggleEl) {
+          toggleEl.addEventListener('click', function (e) {
+            e.preventDefault(); e.stopPropagation(); toggleSubmenu(this);
+          });
+        });
+        window.addEventListener('resize', function () {
+          document.querySelectorAll('.submenu.open').forEach(function (menu) {
+            menu.style.maxHeight = menu.scrollHeight + 'px';
+          });
+        });
+      });
+    })();
+  </script>
+
+  <!-- Live badges -->
+  <script>
+    const prev = JSON.parse(document.getElementById('initialCounts').textContent || '{}');
+
+    function setBadge(id, count){
+      const el = document.getElementById(id); if(!el) return;
+      if(count>0){
+        el.style.display = (id==='badge-omc'||id==='badge-bdc') ? 'inline-flex' : 'inline-block';
+        if(!['badge-omc','badge-bdc'].includes(id)) el.textContent = String(count);
+      } else {
+        el.style.display='none';
+      }
+    }
+    function updateTooltip(el, text){
+      if(!el) return;
+      el.setAttribute('data-bs-original-title', text);
+      const inst = bootstrap.Tooltip.getInstance(el) || new bootstrap.Tooltip(el);
+      try { inst.setContent({'.tooltip-inner': text}); } catch(_) {}
+    }
+    function money2(n){ return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+    function initBadgesFromPrev(){
+      setBadge('badge-orders', prev.unapproved_orders_count||0);
+      setBadge('badge-orders-sub', prev.unapproved_orders_count||0);
+      setBadge('badge-payments', prev.unconfirmed_payments_count||0);
+      setBadge('badge-payments-sub', prev.unconfirmed_payments_count||0);
+      setBadge('badge-truck', prev.unconfirmed_truck_payments_count||0);
+      setBadge('badge-truck-sub', prev.unconfirmed_truck_payments_count||0);
+      setBadge('badge-truck-debtors', prev.truck_debtors_count||0);
+
+      const ob = document.getElementById('badge-omc');
+      const bb = document.getElementById('badge-bdc');
+      const omcTip = `${prev.omc_debtors_count||0} OMC${(prev.omc_debtors_count||0)===1?'':'s'} with unpaid S-Tax · GHS ${money2(prev.omc_outstanding_total)}`;
+      const bdcTip = `${prev.bdc_debtors_count||0} BDC${(prev.bdc_debtors_count||0)===1?'':'s'} with unpaid amount · GHS ${money2(prev.bdc_outstanding_total)}`;
+      setBadge('badge-omc', prev.omc_debtors_count||0); updateTooltip(ob, omcTip);
+      setBadge('badge-bdc', prev.bdc_debtors_count||0); updateTooltip(bb, bdcTip);
+    }
+    initBadgesFromPrev();
+
+    function showToast(title, body){
+      const container=document.getElementById('toastContainer') || (function(){
+        const c=document.createElement('div'); c.id='toastContainer';
+        c.className='position-fixed bottom-0 end-0 p-3'; c.style.zIndex=2000; document.body.appendChild(c); return c;
+      })();
+      const toastEl=document.createElement('div');
+      toastEl.className='toast align-items-center text-bg-primary border-0';
+      toastEl.setAttribute('role','alert'); toastEl.setAttribute('aria-live','assertive'); toastEl.setAttribute('aria-atomic','true');
+      toastEl.innerHTML='<div class="d-flex"><div class="toast-body"><strong>'+title+'</strong><br>'+body+
+        '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>';
+      container.appendChild(toastEl);
+      const bsToast=new bootstrap.Toast(toastEl,{delay:3500}); bsToast.show();
+      toastEl.addEventListener('hidden.bs.toast',()=>toastEl.remove());
+    }
+    function diffNotify(oldVal, newVal, label){
+      if(Number(newVal)>Number(oldVal)){ const d=Number(newVal)-Number(oldVal); showToast('Update','+'+d+' new '+label); }
+    }
+
+    let inFlight=false;
+    async function pulse(){
+      if(inFlight || document.hidden) return; inFlight=true;
+      try{
+        const res=await fetch('/dashboard/pulse',{cache:'no-store'});
+        if(!res.ok) throw new Error('Network');
+        const data=await res.json(); if(!data.ok||!data.counts) throw new Error('Bad payload');
+        const c=data.counts;
+
+        diffNotify(prev.unapproved_orders_count, c.unapproved_orders_count, 'orders pending approval');
+        setBadge('badge-orders', c.unapproved_orders_count);
+        setBadge('badge-orders-sub', c.unapproved_orders_count);
+
+        diffNotify(prev.unconfirmed_payments_count, c.unconfirmed_payments_count, 'payments awaiting confirmation');
+        setBadge('badge-payments', c.unconfirmed_payments_count);
+        setBadge('badge-payments-sub', c.unconfirmed_payments_count);
+
+        diffNotify(prev.unconfirmed_truck_payments_count, c.unconfirmed_truck_payments_count, 'truck payments awaiting confirmation');
+        setBadge('badge-truck', c.unconfirmed_truck_payments_count);
+        setBadge('badge-truck-sub', c.unconfirmed_truck_payments_count);
+
+        setBadge('badge-truck-debtors', c.truck_debtors_count);
+
+        const ob=document.getElementById('badge-omc');
+        const bb=document.getElementById('badge-bdc');
+        const omcTip=(c.omc_debtors_count||0)+' OMC'+((c.omc_debtors_count||0)===1?'':'s')+' with unpaid S-Tax · GHS '+money2(c.omc_outstanding_total);
+        const bdcTip=(c.bdc_debtors_count||0)+' BDC'+((c.bdc_debtors_count||0)===1?'':'s')+' with unpaid amount · GHS '+money2(c.bdc_outstanding_total);
+        setBadge('badge-omc', c.omc_debtors_count); updateTooltip(ob, omcTip);
+        setBadge('badge-bdc', c.bdc_debtors_count); updateTooltip(bb, bdcTip);
+
+        Object.assign(prev, c);
+      }catch(_e){ } finally { inFlight=false; }
+    }
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pulse(); });
+    setInterval(pulse, 1000);
+    window.addEventListener('load', pulse);
+  </script>
+
+  <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
+</body>
+</html>
+
+

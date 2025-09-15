@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ERP Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- External CSS and libs -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <style>
+    :root{
+      --ticker-h: 44px;
+      --ticker-bg: #0f172a;
+      --ticker-ink: #e5e7eb;
+      --ticker-muted: #93c5fd;
+      --ticker-accent: #22c55e;
+      --ticker-sep: #334155;
+      --ticker-speed: 48; /* px/s; JS adjusts effective duration */
+    }
+
+    /* KPI / summary tweaks (kept) */
+    .summary-card .stat-figure { font-weight: 800; letter-spacing: .3px; }
+    .kpi-card { border: none; box-shadow: 0 6px 16px rgba(0,0,0,.08); }
+    .kpi-icon { font-size: 2.25rem; line-height: 1; }
+
+    /* ======= TICKER ======= */
+    .ticker-wrap{
+      position: relative;
+      width: 100%;
+      height: var(--ticker-h);
+      overflow: hidden;
+      background: var(--ticker-bg);
+      color: var(--ticker-ink);
+      border-bottom: 1px solid var(--ticker-sep);
+    }
+    .ticker-inner{
+      height: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      white-space: nowrap;
+    }
+    .ticker-track{
+      display: inline-flex;
+      align-items: center;
+      gap: 28px;              /* space between items */
+      padding-inline: 16px;
+      will-change: transform;
+      animation: ticker-linear var(--ticker-duration, 40s) linear infinite;
+    }
+    .ticker-wrap:hover .ticker-track{ animation-play-state: paused; }
+
+    .ticker-item{
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+    .ti-name{ color: var(--ticker-muted); }
+    .ti-chip{
+      font-size: .75rem; font-weight: 900;
+      padding: .15rem .45rem; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .ti-chip.pms{ background: rgba(59,130,246,.15); }
+    .ti-chip.ago{ background: rgba(34,197,94,.18); }
+    .ti-price{ font-variant-numeric: tabular-nums; }
+    .ti-change.up{ color: #22c55e }
+    .ti-change.down{ color: #ef4444 }
+    .ti-change.flat{ color: #93c5fd }
+    .ti-dot{
+      opacity: .35; margin-inline: 6px;
+    }
+
+    @keyframes ticker-linear {
+      from { transform: translateX(0); }
+      to   { transform: translateX(var(--ticker-shift, -50%)); }
+    }
+
+    /* Header bar */
+    .topbar{
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px; gap: .5rem; flex-wrap: wrap;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- TOP STRIP: theme toggle + Price Board -->
+  <div class="topbar">
+    <div class="d-flex gap-2">
+      <button id="themeToggle" class="btn btn-outline-dark btn-sm">
+        <i class="bi" id="themeIcon"></i>
+      </button>
+      <a href="/prices" class="btn btn-sm btn-primary">
+        <i class="bi bi-graph-up-arrow me-1"></i> Price Board
+      </a>
+    </div>
+  </div>
+
+  <!-- ======= LIVE BDC PRICES TICKER ======= -->
+  <div class="ticker-wrap">
+    <div class="ticker-inner">
+      <div id="tickerA" class="ticker-track"></div>
+      <div id="tickerB" class="ticker-track"></div> <!-- duplicate for seamless loop -->
+    </div>
+  </div>
+
+  <div class="container py-4">
+    {% if dashboard_disabled %}
+      <div class="alert alert-warning text-center my-5 bg-light text-dark shadow rounded">
+        📛 Dashboard not available. Please contact the administrator to enable view access.
+      </div>
+    {% else %}
+
+    <!-- NEW KPI CARDS -->
+    <div class="row g-4 mb-4">
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card text-white kpi-card bg-secondary h-100">
+          <div class="card-body text-center d-flex flex-column justify-content-center">
+            <i class="bi bi-wallet2 kpi-icon mb-2"></i>
+            <h6 class="fw-bold mb-1">Total Bank Balance</h6>
+            <h2 class="stat-figure mb-0">GHS {{ '{:,.2f}'.format(kpi_bank_balance or 0) }}</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card text-white kpi-card bg-warning h-100">
+          <div class="card-body text-center d-flex flex-column justify-content-center">
+            <i class="bi bi-building-check kpi-icon mb-2"></i>
+            <h6 class="fw-bold mb-1">Total OMC Debt</h6>
+            <h2 class="stat-figure mb-0">GHS {{ '{:,.2f}'.format(kpi_omc_debt or 0) }}</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card text-white kpi-card bg-danger h-100">
+          <div class="card-body text-center d-flex flex-column justify-content-center">
+            <i class="bi bi-fuel-pump-fill kpi-icon mb-2"></i>
+            <h6 class="fw-bold mb-1">Total BDC Debt</h6>
+            <h2 class="stat-figure mb-0">GHS {{ '{:,.2f}'.format(kpi_bdc_debt or 0) }}</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card text-white kpi-card bg-dark h-100">
+          <div class="card-body text-center d-flex flex-column justify-content-center">
+            <i class="bi bi-person-exclamation kpi-icon mb-2"></i>
+            <h6 class="fw-bold mb-1">Total Debtors Amount</h6>
+            <h2 class="stat-figure mb-0">GHS {{ '{:,.2f}'.format(kpi_debtors or 0) }}</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing Summary Cards -->
+    <div class="row g-4 mb-4">
+      <div class="col-sm-6 col-lg-3">
+        <div class="card text-white shadow summary-card bg-primary">
+          <div class="card-body text-center">
+            <div class="display-4 mb-3 fw-bold"></div>
+            <h5 class="card-title fw-bold">Total Returns</h5>
+            <h2 class="stat-figure mb-0">GHS {{ '{:,.2f}'.format(total_returns or 0) }}</h2>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-sm-6 col-lg-3">
+        <div class="card text-white shadow summary-card bg-success">
+          <div class="card-body text-center">
+            <i class="bi bi-people-fill display-4 mb-3"></i>
+            <h5 class="card-title fw-bold">Total Clients</h5>
+            <h2 class="stat-figure mb-0">{{ total_clients }}</h2>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-sm-6 col-lg-3">
+        <div class="card text-white shadow summary-card bg-info">
+          <div class="card-body text-center">
+            <i class="bi bi-box-seam display-4 mb-3"></i>
+            <h5 class="card-title fw-bold">Total Orders</h5>
+            <h2 class="stat-figure mb-0">{{ total_orders }}</h2>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-sm-6 col-lg-3">
+        <div class="card text-white shadow summary-card bg-dark">
+          <div class="card-body text-center">
+            <i class="bi bi-patch-check-fill display-4 mb-3"></i>
+            <h5 class="card-title fw-bold">Approval Rate</h5>
+            <h2 class="stat-figure mb-0">{{ approval_rate }}%</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts + Activities -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="mb-3">📈 Analytics Overview</h5>
+            <div id="chart-section" class="text-center">
+              <div class="spinner-border text-primary" role="status"></div>
+              <p class="mt-2">Loading analytics...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="mb-3">🕒 Recent Activities</h5>
+            <div id="activity-section" class="text-center">
+              <div class="spinner-border text-primary" role="status"></div>
+              <p class="mt-2">Loading recent activities...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% endif %}
+  </div>
+
+  <!-- Existing dashboard JS -->
+  <script>
+    $.getScript("{{ url_for('static', filename='js/dashboard.js') }}");
+  </script>
+
+  <!-- Theme toggle -->
+  <script>
+    const savedTheme = localStorage.getItem("theme") || "light";
+    applyTheme(savedTheme);
+    document.getElementById("themeToggle").addEventListener("click", () => {
+      const next = (document.body.dataset.theme || "light") === "dark" ? "light" : "dark";
+      applyTheme(next); localStorage.setItem("theme", next);
+    });
+    function applyTheme(mode) {
+      document.body.setAttribute("data-theme", mode);
+      document.getElementById("themeIcon").className =
+        mode === "dark" ? "bi bi-sun-fill" : "bi bi-moon-fill";
+    }
+  </script>
+
+  <!-- ======= BDC PRICES TICKER JS ======= -->
+  <script>
+    (function(){
+      const TICKER_POLL_MS = 30000; // refresh every 30s
+      const productsParam = 'PMS,AGO'; // both products
+      const tickerA = document.getElementById('tickerA');
+      const tickerB = document.getElementById('tickerB');
+
+      function fmt(n, max=3){
+        n = Number(n);
+        return Number.isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:max }) : '—';
+      }
+      function pct(n){
+        if(n === null || n === undefined || Number.isNaN(Number(n))) return '—';
+        const v = Number(n);
+        return `${v>0?'+':''}${v.toFixed(2)}%`;
+      }
+      function changeClass(pctVal){
+        if(pctVal === null || pctVal === undefined || Number.isNaN(Number(pctVal))) return 'flat';
+        const v = Number(pctVal);
+        if(v>0) return 'up';
+        if(v<0) return 'down';
+        return 'flat';
+      }
+
+      function itemHTML(b){
+        // Build one line per BDC: Name • PMS … • AGO …
+        const pms = b.prices?.PMS;
+        const ago = b.prices?.AGO;
+        // only show products with CURRENT price
+        const parts = [];
+        if (pms?.current){
+          parts.push(
+            `<span class="ti-chip pms">PMS</span>
+             <span class="ti-price">GHS ${fmt(pms.current.price)}</span>
+             <span class="ti-change ${changeClass(pms.change?.pct)}">${pct(pms.change?.pct)}</span>`
+          );
+        }
+        if (ago?.current){
+          parts.push(
+            `<span class="ti-chip ago">AGO</span>
+             <span class="ti-price">GHS ${fmt(ago.current.price)}</span>
+             <span class="ti-change ${changeClass(ago.change?.pct)}">${pct(ago.change?.pct)}</span>`
+          );
+        }
+        if (!parts.length) return '';
+        return `
+          <span class="ticker-item">
+            <span class="ti-name">${b.name || 'BDC'}</span>
+            <span class="ti-dot">•</span>
+            ${parts.join('<span class="ti-dot">|</span>')}
+          </span>`;
+      }
+
+      function setDurationFromWidth(){
+        // compute duration based on content width and desired px/s
+        const speed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ticker-speed')) || 48;
+        // track width is width of one (A). We translate by 50% if A+B equal double.
+        const contentW = tickerA.scrollWidth;
+        const totalW = contentW * 2; // A + B
+        const seconds = Math.max(20, totalW / speed);
+        document.documentElement.style.setProperty('--ticker-duration', `${seconds}s`);
+        // shift is -50% for a perfect loop (A passes exactly one width)
+        document.documentElement.style.setProperty('--ticker-shift', `-${(contentW/totalW)*100}%`);
+      }
+
+      async function refreshTicker(){
+        try{
+          const params = new URLSearchParams();
+          params.set('history_points', '5'); // small for sparklines server-side (unused here)
+          params.set('products', productsParam);
+          const res = await fetch(`/prices/api/board_data?${params.toString()}`, { cache: 'no-store' });
+          if(!res.ok) throw new Error('Network error');
+          const j = await res.json();
+          if(!j.ok) throw new Error(j.error || 'Failed to load');
+
+          const bdcs = (j.bdcs || []).filter(b =>
+            (b.prices?.PMS?.current || b.prices?.AGO?.current)
+          );
+
+          if (!bdcs.length){
+            tickerA.innerHTML = `<span class="ticker-item"><span class="ti-name">No live BDC prices yet</span></span>`;
+            tickerB.innerHTML = '';
+            setDurationFromWidth();
+            return;
+          }
+
+          // Build once and duplicate for seamless scroll
+          const html = bdcs.map(itemHTML).filter(Boolean).join('');
+          tickerA.innerHTML = html;
+          tickerB.innerHTML = html;
+
+          // After paint, compute duration
+          requestAnimationFrame(setDurationFromWidth);
+        }catch(e){
+          tickerA.innerHTML = `<span class="ticker-item"><span class="ti-name">Unable to load BDC prices</span></span>`;
+          tickerB.innerHTML = '';
+          setDurationFromWidth();
+        }
+      }
+
+      // init + polling + resize handling
+      refreshTicker();
+      let poll = setInterval(refreshTicker, TICKER_POLL_MS);
+      window.addEventListener('visibilitychange', () => {
+        if(document.hidden){ clearInterval(poll); }
+        else { refreshTicker(); poll = setInterval(refreshTicker, TICKER_POLL_MS); }
+      });
+      window.addEventListener('resize', () => { requestAnimationFrame(setDurationFromWidth); });
+    })();
+  </script>
+</body>
+</html>

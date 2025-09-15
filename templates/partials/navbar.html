@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap 5.3 CSS + Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <title>Glassy Navbar – Mobile Collapse Fixed</title>
+  <style>
+    :root{ --nav-h: 64px; }
+
+    .navbar-glass{
+      background: linear-gradient(90deg, rgba(13,110,253,.70) 0%, rgba(11,94,215,.70) 100%);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 2px 16px rgba(13,110,253,.25);
+      border-bottom: 1px solid rgba(255,255,255,.18);
+      z-index: 1040;
+    }
+    .navbar-brand img{ height:36px; }
+    body{ padding-top: var(--nav-h); }
+
+    .nav-btn{
+      background: transparent; border: 0; color: #fff; padding: 0 .25rem; cursor: pointer;
+    }
+    .nav-icon{
+      position: relative; display:inline-flex; align-items:center; justify-content:center;
+      width:40px; height:40px; border-radius:999px;
+    }
+    .nav-badge{
+      position:absolute; top:2px; right:2px; transform: translate(35%,-35%);
+      display:none;
+    }
+
+    .bg-success-soft{ background-color: rgba(25,135,84,.9) !important; }
+    .blink-green{ animation: blinkG 0.9s linear infinite; box-shadow: 0 0 .45rem rgba(25,135,84,.7); }
+    @keyframes blinkG{ 50%{ opacity:.35 } }
+
+    .badge-blink{ animation: blinkR .9s linear infinite; box-shadow: 0 0 .35rem rgba(220,53,69,.6); }
+    @keyframes blinkR{ 50%{ opacity:.35 } }
+
+    #navSlidePanel{
+      position: fixed; z-index: 1085;
+      top: var(--nav-h); right: 12px;
+      width: 380px; max-width: calc(100vw - 24px);
+      background: #fff; color: #0b1320;
+      border-radius: 14px; box-shadow: 0 16px 40px rgba(2,8,23,.22);
+      transform: translateX(120%); transition: transform .28s ease, opacity .28s ease;
+      opacity: 0; pointer-events: none;
+    }
+    #navSlidePanel.show{ transform: translateX(0); opacity: 1; pointer-events: auto; }
+    #navSlidePanel .hdr{
+      display:flex; align-items:center; justify-content:space-between;
+      padding: .75rem 1rem; border-bottom: 1px solid #eef2f7;
+    }
+    #navSlidePanel .content{ padding: .75rem 1rem; }
+    #navSlidePanel .list-group-item{ border:0; border-bottom:1px solid #f1f5f9; }
+    #navSlidePanel .list-group-item:last-child{ border-bottom:0; }
+    #navSlidePanel .badge{ vertical-align: middle; }
+
+    .navbar .collapse.navbar-collapse { z-index: 1070; }
+  </style>
+</head>
+<body>
+
+<nav id="navRoot"
+     class="navbar navbar-expand-lg navbar-dark fixed-top navbar-glass"
+     data-pulse-url="{{ url_for('navbar.nav_pulse') }}">
+
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+      <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Logo">
+      <span class="fw-semibold">Admin</span>
+    </a>
+
+    <button class="navbar-toggler" type="button"
+            data-bs-toggle="collapse" data-bs-target="#navGlobal"
+            aria-controls="navGlobal" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navGlobal">
+      <ul class="navbar-nav ms-auto align-items-lg-center align-items-start gap-1 mt-2 mt-lg-0">
+
+        <li class="nav-item">
+          <button class="nav-btn" type="button" aria-label="Orders">
+            <span id="icon-orders" class="nav-icon text-white">
+              <i class="bi bi-bag-check-fill fs-5"></i>
+              <span id="nav-badge-orders" class="badge bg-success-soft text-white rounded-circle nav-badge"></span>
+            </span>
+          </button>
+        </li>
+
+        <li class="nav-item">
+          <button class="nav-btn" type="button" aria-label="Payments">
+            <span id="icon-payments" class="nav-icon text-white">
+              <i class="bi bi-cash-coin fs-5"></i>
+              <span id="nav-badge-payments" class="badge bg-success-soft text-white rounded-circle nav-badge"></span>
+            </span>
+          </button>
+        </li>
+
+        <li class="nav-item">
+          <button class="nav-btn" type="button" aria-label="Truck Payments">
+            <span id="icon-truck" class="nav-icon text-white">
+              <i class="bi bi-truck-front-fill fs-5"></i>
+              <span id="nav-badge-truck" class="badge bg-success-soft text-white rounded-circle nav-badge"></span>
+            </span>
+          </button>
+        </li>
+
+        <li class="nav-item">
+          <button class="nav-btn" type="button" aria-label="OMC">
+            <span class="nav-icon text-white">
+              <i class="bi bi-building-check fs-5"></i>
+              <span id="nav-badge-omc" class="badge bg-danger rounded-circle nav-badge badge-blink">!</span>
+            </span>
+          </button>
+        </li>
+
+        <li class="nav-item">
+          <button class="nav-btn" type="button" aria-label="BDC">
+            <span class="nav-icon text-white">
+              <i class="bi bi-building fs-5"></i>
+              <span id="nav-badge-bdc" class="badge bg-danger rounded-circle nav-badge badge-blink">!</span>
+            </span>
+          </button>
+        </li>
+
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle d-flex align-items-center text-white" href="#" id="navProfile"
+             role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                 class="rounded-circle me-2" style="width:28px;height:28px;object-fit:cover" alt="">
+            Admin
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="/admin/settings"><i class="bi bi-gear me-2"></i>Settings</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="/logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+          </ul>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+
+  <!-- Right-side slide-in (custom) -->
+  <div id="navSlidePanel" aria-live="polite" aria-atomic="true">
+    <div class="hdr">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-bell-fill text-success"></i>
+        <strong>New Activity</strong>
+      </div>
+      <button id="navSlideClose" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="content">
+      <div id="navSlideList" class="list-group list-group-flush small"></div>
+      <div class="mt-3 d-flex flex-wrap gap-2">
+        <button id="btnGoOrders"  class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-bag-check-fill me-1"></i> Go to Orders
+        </button>
+        <button id="btnGoPayments" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-cash-coin me-1"></i> Go to Payments
+        </button>
+        <button id="btnGoTruck" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-truck-front-fill me-1"></i> Go to Truck Payments
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script id="navCounts" type="application/json">
+    {{ {
+      "unapproved_orders_count": unapproved_orders_count|default(0),
+      "unconfirmed_payments_count": unconfirmed_payments_count|default(0),
+      "unconfirmed_truck_payments_count": unconfirmed_truck_payments_count|default(0),
+      "truck_debtors_count": truck_debtors_count|default(0),
+      "omc_debtors_count": omc_debtors_count|default(0),
+      "omc_outstanding_total": omc_outstanding_total|default(0),
+      "bdc_debtors_count": bdc_debtors_count|default(0),
+      "bdc_outstanding_total": bdc_outstanding_total|default(0)
+    } | tojson }}
+  </script>
+</nav>
+
+<main class="container py-4">
+  <p class="lead">Page content here …</p>
+</main>
+
+<!-- Bootstrap Bundle JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+(function(){
+  const root = document.getElementById('navRoot');
+  const collapseEl = document.getElementById('navGlobal');
+  const togglerEl  = document.querySelector('.navbar-toggler');
+
+  // Single source of truth for collapse instance
+  const bsColl = collapseEl ? bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle:false }) : null;
+  const isLG = () => window.matchMedia('(min-width: 992px)').matches;
+
+  // Toggle on hamburger click
+  if (togglerEl && bsColl) {
+    togglerEl.addEventListener('click', function (e) {
+      e.preventDefault();
+      bsColl.toggle();
+    });
+  }
+
+  // Keep aria-expanded in sync
+  collapseEl?.addEventListener('shown.bs.collapse', () => togglerEl?.setAttribute('aria-expanded', 'true'));
+  collapseEl?.addEventListener('hidden.bs.collapse', () => togglerEl?.setAttribute('aria-expanded', 'false'));
+
+  // Close helpers (mobile only)
+  function closeIfMobile(){
+    if (!isLG() && bsColl && collapseEl.classList.contains('show')) bsColl.hide();
+  }
+
+  // 1) Close when clicking any nav link/button/dropdown item (except dropdown toggler)
+  document.querySelectorAll('#navGlobal a.nav-link:not(.dropdown-toggle), #navGlobal .dropdown-item, #navGlobal button.nav-btn')
+    .forEach(el => el.addEventListener('click', () => {
+      // Allow SPA hooks to run, then close
+      setTimeout(closeIfMobile, 10);
+    }));
+
+  // 2) Close when clicking brand
+  document.querySelectorAll('.navbar-brand').forEach(el => el.addEventListener('click', closeIfMobile));
+
+  // 3) Close on click outside the navbar when open
+  document.addEventListener('click', (e) => {
+    if (!collapseEl?.classList.contains('show')) return;
+    if (!root.contains(e.target)) closeIfMobile();
+  });
+
+  // 4) Close on Esc
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeIfMobile();
+  });
+
+  // 5) Close when resizing up to desktop
+  window.addEventListener('resize', () => {
+    if (isLG() && collapseEl?.classList.contains('show')) bsColl.hide();
+  });
+
+  // Layout: keep content below actual nav height
+  function setNavHeightVar(){
+    const h = root?.offsetHeight || 64;
+    document.documentElement.style.setProperty('--nav-h', h + 'px');
+  }
+  setNavHeightVar(); window.addEventListener('resize', setNavHeightVar);
+
+  // ---- Slide panel + pulse (unchanged, just tightened a bit) ----
+  const panel      = document.getElementById('navSlidePanel');
+  const panelList  = document.getElementById('navSlideList');
+  const btnClose   = document.getElementById('navSlideClose');
+  const pulseUrl   = root?.dataset?.pulseUrl || '/nav/pulse';
+  const $          = (id) => document.getElementById(id);
+
+  function safeInit(){
+    try{ return JSON.parse(document.getElementById('navCounts')?.textContent || '{}'); }
+    catch(_){ return {}; }
+  }
+  const prev = Object.assign({
+    unapproved_orders_count: 0,
+    unconfirmed_payments_count: 0,
+    unconfirmed_truck_payments_count: 0,
+    truck_debtors_count: 0,
+    omc_debtors_count: 0,
+    omc_outstanding_total: 0,
+    bdc_debtors_count: 0,
+    bdc_outstanding_total: 0
+  }, safeInit());
+
+  function setBadge(id, count, isGreen=false){
+    const el = $(id); if(!el) return;
+    if(count > 0){
+      el.style.display = 'inline-block';
+      if(isGreen) el.textContent = String(count);
+    }else{
+      el.style.display = 'none';
+    }
+  }
+  function primeBadges(){
+    setBadge('nav-badge-orders', prev.unapproved_orders_count, true);
+    setBadge('nav-badge-payments', prev.unconfirmed_payments_count, true);
+    setBadge('nav-badge-truck', prev.unconfirmed_truck_payments_count, true);
+    setBadge('nav-badge-omc', prev.omc_debtors_count);
+    setBadge('nav-badge-bdc', prev.bdc_debtors_count);
+  }
+  function goToSection(which){
+    const map = {
+      orders:   { url: '/orders',               label: 'REVIEW ORDERS' },
+      payments: { url: '/payments',             label: 'RECEIVE PAYMENT' },
+      truck:    { url: '/admin/truck_payments', label: 'FREIGHTS TRANSACTIONS' }
+    };
+    const target = map[which]; if(!target) return;
+
+    const link = document.querySelector(`.sidebar .sidebar-link[data-url="${target.url}"]`);
+    if (window.loadContent && link && !link.classList.contains('is-disabled')) {
+      const submenu = link.closest('.submenu');
+      if (submenu && !submenu.classList.contains('open')) {
+        submenu.classList.add('open');
+        submenu.style.maxHeight = submenu.scrollHeight + 'px';
+        const toggle = document.querySelector(`.js-dropdown[data-target="#${submenu.id}"]`);
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      }
+      document.querySelectorAll('.sidebar .sidebar-link').forEach(a => a.classList.remove('active-link'));
+      link.classList.add('active-link');
+      window.loadContent(target.url, target.label);
+      panel.classList.remove('show');
+      closeIfMobile(); // also close navbar when deep-linking
+      return;
+    }
+    window.location.href = target.url;
+  }
+  function addPanelItem(icon, text, delta, which){
+    const li = document.createElement('button');
+    li.type = 'button';
+    li.className = 'list-group-item d-flex justify-content-between align-items-center text-start';
+    li.innerHTML = `
+      <span class="me-2">
+        <i class="bi ${icon} me-2 text-success"></i>${text}
+      </span>
+      <span class="badge bg-success">${delta>0? '+'+delta : delta}</span>
+    `;
+    li.addEventListener('click', () => goToSection(which));
+    panelList.prepend(li);
+  }
+  function openPanelAndBlink(which){
+    const map = { orders: 'icon-orders', payments: 'icon-payments', truck: 'icon-truck' };
+    Object.values(map).forEach(id => $(id)?.classList.remove('blink-green'));
+    const target = map[which];
+    if(target) $(target)?.classList.add('blink-green');
+    panel.classList.add('show');
+  }
+  function closePanel(){
+    panel.classList.remove('show');
+    ['icon-orders','icon-payments','icon-truck'].forEach(id => $(id)?.classList.remove('blink-green'));
+  }
+  btnClose?.addEventListener('click', closePanel);
+
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'btnGoOrders')   return goToSection('orders');
+    if (e.target.id === 'btnGoPayments') return goToSection('payments');
+    if (e.target.id === 'btnGoTruck')    return goToSection('truck');
+  });
+
+  ['icon-orders','icon-payments','icon-truck'].forEach(id=>{
+    const el = $(id); if(!el) return;
+    el.addEventListener('click', ()=>{ panel.classList.add('show'); });
+    el.addEventListener('dblclick', ()=>{
+      if (id==='icon-orders')   goToSection('orders');
+      if (id==='icon-payments') goToSection('payments');
+      if (id==='icon-truck')    goToSection('truck');
+    });
+  });
+
+  let inflight = false;
+  async function pulse(){
+    if(inflight || document.hidden) return;
+    inflight = true;
+    try{
+      const res = await fetch(pulseUrl, { cache: 'no-store' });
+      if(!res.ok) throw new Error('net');
+      const data = await res.json();
+      if(!data || data.ok !== true) throw new Error('bad');
+      const c = data.counts || {};
+
+      if(c.unapproved_orders_count > prev.unapproved_orders_count){
+        const d = c.unapproved_orders_count - prev.unapproved_orders_count;
+        addPanelItem('bi-bag-check-fill', 'New order(s) pending approval', d, 'orders');
+        openPanelAndBlink('orders');
+      }
+      if(c.unconfirmed_payments_count > prev.unconfirmed_payments_count){
+        const d = c.unconfirmed_payments_count - prev.unconfirmed_payments_count;
+        addPanelItem('bi-cash-coin', 'New payment(s) awaiting confirmation', d, 'payments');
+        openPanelAndBlink('payments');
+      }
+      if(c.unconfirmed_truck_payments_count > prev.unconfirmed_truck_payments_count){
+        const d = c.unconfirmed_truck_payments_count - prev.unconfirmed_truck_payments_count;
+        addPanelItem('bi-truck-front-fill', 'New truck payment(s) awaiting confirmation', d, 'truck');
+        openPanelAndBlink('truck');
+      }
+
+      setBadge('nav-badge-orders', c.unapproved_orders_count, true);
+      setBadge('nav-badge-payments', c.unconfirmed_payments_count, true);
+      setBadge('nav-badge-truck', c.unconfirmed_truck_payments_count, true);
+      setBadge('nav-badge-omc', c.omc_debtors_count);
+      setBadge('nav-badge-bdc', c.bdc_debtors_count);
+
+      Object.assign(prev, c);
+    }catch(_e){ /* silent */ }
+    finally{ inflight = false; }
+  }
+
+  window.addEventListener('load', () => { primeBadges(); pulse(); });
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) pulse(); });
+  setInterval(pulse, 1000);
+})();
+</script>
+
+</body>
+</html>

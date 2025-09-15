@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orders</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Select2 -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <!-- jQuery + Select2 + Bootstrap Bundle -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    .card-header small { color:#6c757d; }
+    .formula-chip { display:inline-block; padding:.2rem .6rem; border-radius:999px; background:#f1f3f5; font-size:.8rem; }
+    .calc-note { font-size:.8rem; color:#6c757d; }
+    .dimmed { opacity:.55; pointer-events:none; }
+    .btn-toggle-group .btn { min-width: 92px; }
+    .metric-box { background:#f8f9fa; border-radius:.5rem; padding:.5rem .75rem; }
+    .metric-heading { font-size:.85rem; color:#6c757d; margin-bottom:.2rem; }
+    .metric-value { font-weight:600; }
+    .actions-grid { display:grid; grid-template-columns: 1fr; gap:.5rem; }
+    @media (min-width: 576px){ .actions-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 576px){
+      .form-label, .btn { font-size:.95rem; }
+      .card-header .btn { width:100%; }
+    }
+    .bvr-badge {
+      display: inline-block;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-left: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Spinner overlay */
+    .spinner-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.7);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .spinner-overlay.d-none { display: none !important; }
+  </style>
+</head>
+
+<body class="p-2 p-sm-3">
+<h4 class="mb-3">Pending Orders</h4>
+<div id="order-alert"></div>
+
+<!-- Global feedback modal -->
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Notice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="feedbackModalBody">—</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmModalTitle">Confirm</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="No"></button>
+      </div>
+      <div class="modal-body" id="confirmModalBody">Are you sure?</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="confirmNoBtn">No</button>
+        <button type="button" class="btn btn-danger" id="confirmYesBtn">Yes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page spinner -->
+<div id="pageSpinner" class="spinner-overlay d-none">
+  <div class="spinner-border" role="status" aria-hidden="true"></div>
+  <div class="mt-2">Processing…</div>
+</div>
+
+{% if orders %}
+  {% for order in orders %}
+    {% set _raw_mode = (order.order_type or 'combo') %}
+    {% set mode = _raw_mode.replace('-', '_') %}
+    {% set mode_label = 'S-BDC' if mode=='s_bdc' else ('S-Tax' if mode=='s_tax' else 'Combo') %}
+    {% set filled = order.total_debt and order.returns %}
+
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <a class="d-inline-flex align-items-center text-decoration-none" href="javascript:void(0)">
+            {% if order.client_image_url %}
+              <img src="{{ order.client_image_url }}" alt="Client Image" class="rounded-circle me-2" width="32" height="32">
+            {% else %}
+              <div class="rounded-circle bg-secondary me-2" style="width:32px; height:32px;"></div>
+            {% endif %}
+            <strong>{{ order.client_name or 'Client' }} ({{ order.client_id }})</strong>
+          </a>
+          {% set date_str = (order.date|string).split(' ')[0].split('T')[0] if order.date else '' %}
+          <small>
+            • {{ order.product }} • {{ order.quantity }} L • {{ date_str }}
+          </small>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
+            View Details
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger decline-btn" data-id="{{ order._id }}">
+            Decline
+          </button>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <form method="POST"
+              action="/orders/update/{{ order._id }}"
+              class="row g-3 order-update-form"
+              novalidate
+              data-id="{{ order._id }}"
+              data-qty="{{ order.quantity|float }}"
+              data-client="{{ order.client_name or 'Client' }}"
+              data-clientid="{{ order.client_id }}"
+              data-product="{{ order.product or '' }}"
+              data-vehicle="{{ order.vehicle_number or '' }}"
+              data-driver="{{ order.driver_name or '' }}"
+              data-driverphone="{{ order.driver_phone or '' }}"
+              data-region="{{ order.region or '' }}"
+              data-date="{{ order.date or '' }}">
+
+          <!-- Order Type (read-only) -->
+          <div class="col-12">
+            <label class="form-label mb-1">Order Type</label>
+            <div>
+              <span class="badge
+                {% if mode=='s_bdc' %} bg-primary
+                {% elif mode=='s_tax' %} bg-warning text-dark
+                {% else %} bg-success
+                {% endif %}">
+                {{ mode_label }}
+              </span>
+              <small class="calc-note ms-2">
+                {% if mode=='s_tax' %}Debt = S-Tax × Q
+                {% elif mode=='s_bdc' %}Debt = S-BDC × Q
+                {% else %}Debt = (S-BDC + S-Tax) × Q
+                {% endif %}
+              </small>
+            </div>
+            <input type="hidden" name="order_type" class="order_type" value="{{ mode }}">
+          </div>
+
+          <!-- Shareholder -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">Shareholder</label>
+            <select name="shareholder" class="form-select" required>
+              <option value="">Select Shareholder</option>
+              <option value="Rex"    {% if order.shareholder == 'Rex' %}selected{% endif %}>Rex</option>
+              <option value="Simon"  {% if order.shareholder == 'Simon' %}selected{% endif %}>Simon</option>
+              <option value="Paul"   {% if order.shareholder == 'Paul' %}selected{% endif %}>Paul</option>
+              <option value="Neutral"{% if order.shareholder == 'Neutral' %}selected{% endif %}>Neutral</option>
+            </select>
+          </div>
+
+          <!-- OMC -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">OMC</label>
+            <select name="omc" class="form-control omc-select">
+              <option value="">Select OMC</option>
+              {% for o in omcs %}
+                <option value="{{ o.name }}" data-rep-phone="{{ o.rep_phone or '' }}" {% if order.omc == o.name %}selected{% endif %}>
+                  {{ o.name }}{% if o.rep_phone %} — {{ o.rep_phone }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- BDC -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">BDC</label>
+            <select name="bdc" class="form-control bdc-select">
+              <option value="">Select BDC</option>
+              {% for b in bdcs %}
+                <option value="{{ b._id }}"
+                        data-bdc-name="{{ b.name }}"
+                        data-rep-phone="{{ b.rep_phone or b.phone or '' }}"
+                        {% if (order.bdc_id|string) == (b._id|string) %}selected{% endif %}>
+                  {{ b.name }}{% if b.rep_phone or b.phone %} — {{ b.rep_phone or b.phone }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Payment -->
+          <div class="col-12" data-payment-section>
+            <label class="form-label">Payment Details</label>
+            <div class="row g-2 payment-type-group align-items-end">
+              <div class="col-12 col-sm-6 col-lg-4">
+                <select class="form-select payment-type-select" name="payment_type">
+                  <option value="">Select Payment Type (Amount to Pay to BDC )</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Credit">Credit</option>
+                  <option value="From Account">From Account</option>
+                </select>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-4 d-none payment-amount-wrapper">
+                <input type="number" step="0.01" name="payment_amount" class="form-control" placeholder="Auto: qty × P-BDC" />
+                <div class="form-text payment-amount-view text-muted"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Depot -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">DEPOT</label>
+            <input type="text" name="depot" class="form-control depot_input" value="{{ order.depot or '' }}" required>
+          </div>
+
+          <!-- Prices -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label d-flex justify-content-between align-items-center flex-wrap gap-2">
+              P-BDC <span class="calc-note">For price margin & payments</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary fetch-price-btn" data-product="{{ order.product }}" title="Auto-fill P/S Price">Use Existing Price</button>
+            </label>
+            <input type="number" step="0.01" name="p_bdc_omc" class="form-control p_bdc_input" value="{{ order.p_bdc_omc or '' }}">
+          </div>
+
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">S-BDC <span class="calc-note">Used in S-BDC/Combo debt</span></label>
+            <input type="number" step="0.01" name="s_bdc_omc" class="form-control s_bdc_input" value="{{ order.s_bdc_omc or '' }}">
+          </div>
+
+          <!-- Taxes -->
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">P-Tax <span class="calc-note">For tax margin only</span></label>
+            <input type="number" step="0.01" name="p_tax" class="form-control p_tax_input" value="{{ order.p_tax or '' }}">
+          </div>
+
+          <div class="col-12 col-sm-6 col-lg-4">
+            <label class="form-label">S-Tax <span class="calc-note">Used in S-Tax/Combo debt</span></label>
+            <input type="number" step="0.01" name="s_tax" class="form-control s_tax_input" value="{{ order.s_tax or '' }}">
+          </div>
+
+          <!-- Derived -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Price Margin (per L)</div>
+              <input type="hidden" name="margin" class="margin_input" value="{{ order.margin or '' }}">
+              <input type="text" class="form-control margin_view" value="" readonly>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Tax Margin (per L)</div>
+              <input type="hidden" name="margin_tax" class="margin_tax_input" value="{{ order.margin_tax or '' }}">
+              <input type="text" class="form-control margin_tax_view" value="" readonly>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="metric-box">
+              <div class="metric-heading">Total Debt</div>
+              <input type="hidden" name="total_debt" class="total_debt_input" value="{{ order.total_debt or '' }}">
+              <input type="text" class="form-control total_debt_view" value="" readonly>
+              <div class="mt-1">
+                <span class="formula-chip debt-formula-chip">Formula: —</span><br>
+                <small class="calc-note debt-preview">Q = {{ order.quantity|float }} → —</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- RETURNS -->
+          <div class="col-12">
+            <div class="metric-box">
+              <div class="metric-heading">Returns</div>
+              <div class="row g-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Price Margin × Q</label>
+                  <div class="metric-value">GHS <span class="returns_sbdc_display">0.00</span></div>
+                  <input type="hidden" name="returns_sbdc" class="returns_sbdc_input" value="">
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Tax Margin × Q</label>
+                  <div class="metric-value">GHS <span class="returns_stax_display">0.00</span></div>
+                  <input type="hidden" name="returns_stax" class="returns_stax_input" value="">
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Total Returns ( (Price + Tax) × Q )</label>
+                  <div class="metric-value">GHS <span class="returns_total_display">{{ order.returns or '0.00' }}</span></div>
+                  <input type="hidden" name="returns_total" class="returns_total_input" value="">
+                  <input type="hidden" name="returns" class="returns_input" value="{{ order.returns or '' }}">
+                </div>
+              </div>
+              <div class="mt-1">
+                <span class="formula-chip returns-formula-chip">Formula: (Price Margin + Tax Margin) × Q</span>
+                <br><small class="calc-note returns-preview"></small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Due Date (left) + Delivery details (right) -->
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Due Date (for client to finish Payments for this order)</label>
+            <input type="date"
+                   name="due_date"
+                   class="form-control due_date_input"
+                   value="{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '' }}">
+            <div class="form-text text-muted">Only today or future dates are allowed.</div>
+          </div>
+
+          <div class="col-12 col-lg-8">
+            <div class="metric-box">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="metric-heading mb-1">Delivery Details</div>
+                  <small class="text-muted">Confirm truck & driver, and set amount for this delivery.</small>
+                </div>
+              </div>
+              <div class="row g-2 mt-2">
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Truck Number</label>
+                  <input type="text" class="form-control" value="{{ order.vehicle_number or '' }}" placeholder="e.g. GT660923" readonly>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Driver Name</label>
+                  <input type="text" class="form-control" value="{{ order.driver_name or '' }}" placeholder="Driver" readonly>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label">Amount</label>
+                  <input type="number" step="0.01" name="delivery_amount" class="form-control"
+                         value="{{ (order.delivery_amount if order.delivery_amount is not none else order.total_debt) or '' }}"
+                         placeholder="e.g. 3200.00">
+                  <div class="form-text text-muted">Used to update truck order total.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACTIONS -->
+          <div class="col-12">
+            <div class="actions-grid">
+              <button type="button" class="btn btn-outline-success send-omc-btn">Send to OMC (WhatsApp)</button>
+              <button type="button" class="btn btn-outline-success send-bdc-btn">Send to BDC (WhatsApp)</button>
+              <button type="submit" class="btn btn-{{ 'success' if filled else 'primary' }}">
+                {{ 'Approve & Confirm' if filled else 'Confirm' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- View Details Modal -->
+    <div class="modal fade" id="detailsModal{{ order._id }}" tabindex="-1"
+         aria-labelledby="detailsModalLabel{{ order._id }}" aria-hidden="true"
+         data-product="{{ order.product or '' }}"
+         data-vehicle="{{ order.vehicle_number or '' }}"
+         data-driver="{{ order.driver_name or '' }}"
+         data-driverphone="{{ order.driver_phone or '' }}"
+         data-quantity="{{ order.quantity or '' }}"
+         data-region="{{ order.region or '' }}"
+         data-depot="{{ order.depot or '' }}">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="detailsModalLabel{{ order._id }}">Order Details</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <ul class="list-group">
+              <li class="list-group-item"><strong>Order Type:</strong> {{ mode_label }}</li>
+              <li class="list-group-item"><strong>Product:</strong> {{ order.product or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Vehicle Number:</strong> {{ order.vehicle_number or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Driver's Name:</strong> {{ order.driver_name or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Driver's Phone:</strong> {{ order.driver_phone or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Quantity:</strong> {{ order.quantity or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Region:</strong> {{ order.region or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Depot:</strong> {{ order.depot or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Amount:</strong> {{ (order.delivery_amount if order.delivery_amount is not none else order.total_debt) or 'N/A' }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="alert alert-info">No pending orders to review.</div>
+{% endif %}
+
+<script>
+  // ---------- UI helpers ----------
+  function toNum(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+  function toFixed2(n){ n = Number(n); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
+  function fmt(n){ n = Number(n); return Number.isFinite(n) ? n.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'; }
+
+  function normalizePhone(raw){
+    if(!raw) return "";
+    const digits = String(raw).replace(/\D/g,'');
+    if(digits.startsWith('0')) return '233' + digits.slice(1);
+    if(digits.startsWith('233')) return digits;
+    if(digits.startsWith('27') || digits.startsWith('234') || digits.startsWith('44') || digits.startsWith('1')) return digits;
+    return digits;
+  }
+
+  function showSpinner(){ $('#pageSpinner').removeClass('d-none'); }
+  function hideSpinner(){ $('#pageSpinner').addClass('d-none'); }
+
+  // --- Backdrop fix: force-clean modal artifacts ---
+  function resetModalState(){
+    try {
+      document.querySelectorAll('.modal.show').forEach(el=>{
+        const inst = bootstrap.Modal.getInstance(el);
+        if (inst) inst.hide();
+      });
+    } catch(e){}
+    $('.modal-backdrop').remove();
+    $('body').removeClass('modal-open').css('padding-right','');
+  }
+
+  function showNotice(message, title){
+    $('#feedbackModal .modal-title').text(title || 'Notice');
+    $('#feedbackModalBody').html(message);
+    // ensure clean slate before opening a new modal
+    resetModalState();
+    const m = new bootstrap.Modal(document.getElementById('feedbackModal'));
+    m.show();
+  }
+
+  function confirmDialog(message, title){
+    $('#confirmModalTitle').text(title || 'Confirm');
+    $('#confirmModalBody').html(message || 'Are you sure?');
+    const modalEl = document.getElementById('confirmModal');
+    const m = new bootstrap.Modal(modalEl);
+    return new Promise((resolve)=>{
+      const yes = $('#confirmYesBtn'), no = $('#confirmNoBtn');
+      const cleanup = () => {
+        yes.off('click._c'); no.off('click._c');
+        modalEl.removeEventListener('hidden.bs.modal', onHide);
+      };
+      const onHide = () => { cleanup(); resolve(false); };
+      yes.on('click._c', ()=>{ cleanup(); m.hide(); resolve(true); });
+      no.on('click._c',  ()=>{ cleanup(); m.hide(); resolve(false); });
+      modalEl.addEventListener('hidden.bs.modal', onHide, {once:true});
+      m.show();
+    });
+  }
+
+  // Global safety: when all modals are closed, remove any leftover backdrops
+  $(document).on('hidden.bs.modal', '.modal', function () {
+    setTimeout(function(){
+      if ($('.modal.show').length === 0) {
+        $('.modal-backdrop').remove();
+        $('body').removeClass('modal-open').css('padding-right','');
+      }
+    }, 0);
+  });
+
+  function openWhatsApp(phone, message){
+    if(!phone){
+      showNotice("No phone number available for this contact.", "Missing Phone");
+      return;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  }
+
+  function buildMessage($form, includeDepot = false){
+    const id     = $form.data('id');
+    const $modal = $(`#detailsModal${id}`);
+
+    const product = $modal.data('product')      || $form.data('product') || '';
+    const vehicle = $modal.data('vehicle')      || $form.data('vehicle') || '';
+    const driver  = $modal.data('driver')       || $form.data('driver')  || '';
+    const dphone  = $modal.data('driverphone')  || $form.data('driverphone') || '';
+    const qty     = $modal.data('quantity')     || $form.data('qty') || '';
+    const region  = $modal.data('region')       || $form.data('region') || '';
+    const depot   = ($form.find('.depot_input').val() || $modal.data('depot') || '').toString().trim();
+
+    const omcName = $form.find('.omc-select').val() || '';
+    const $bdcSel = $form.find('.bdc-select option:selected');
+    const bdcName = ($bdcSel.data('bdc-name') || '').toString().trim() || ($bdcSel.text() || '').trim();
+
+    const lines = [
+      'ORDER DETAILS',
+      `OMC: ${omcName || 'N/A'}`,
+      `BDC: ${bdcName || 'N/A'}`,
+      `Product: ${product || 'N/A'}`,
+      `Quantity: ${qty ? qty + ' L' : 'N/A'}`,
+      `Region: ${region || 'N/A'}`,
+      `Vehicle: ${vehicle || 'N/A'}`,
+      `Driver: ${driver || 'N/A'}${dphone ? ' ('+dphone+')' : ''}`
+    ];
+    if (includeDepot) lines.push(`Depot: ${depot || 'N/A'}`);
+    return lines.join('\n');
+  }
+
+  // ---- Select2 enable/disable helpers ----
+  function setPartnerState($sel, opts){
+    const disabled = !!opts.disabled, required = !!opts.required, clear = !!opts.clear;
+    const dimClass = opts.dimClass || 'dimmed';
+    if (clear) { $sel.val(''); }
+    const isS2 = $sel.hasClass('select2-hidden-accessible');
+    $sel.prop('disabled', disabled).prop('required', required);
+    if (isS2){ $sel.trigger('change.select2'); } else { $sel.trigger('change'); }
+    const $wrap = isS2 ? $sel.next('.select2-container') : $sel;
+    if (disabled){ $wrap.addClass(dimClass); } else { $wrap.removeClass(dimClass); }
+  }
+  function setBDCState($form, disabled){ setPartnerState($form.find('.bdc-select'), {disabled, required: !disabled, clear: !!disabled, dimClass:'dimmed'}); }
+  function setOMCState($form, disabled){ setPartnerState($form.find('.omc-select'), {disabled, required: !disabled, clear: !!disabled, dimClass:'dimmed'}); }
+
+  // --- Mode UI & calcs ---
+  function setModeUI($form, mode){
+    $form.find('.order_type').val(mode);
+    const $p  = $form.find('.p_bdc_input');
+    const $s  = $form.find('.s_bdc_input');
+    const $pt = $form.find('.p_tax_input');
+    const $st = $form.find('.s_tax_input');
+    const on  = ($el) => { $el.prop('disabled', false).removeClass('dimmed'); };
+    const off = ($el) => { $el.val('').prop('disabled', true).addClass('dimmed'); };
+
+    [$p,$s,$pt,$st].forEach($el => $el.prop('required', false));
+    if (mode === 's_tax'){
+      off($p); off($s); on($pt); on($st); $st.prop('required', true);
+      setBDCState($form, true); setOMCState($form, false);
+    } else if (mode === 's_bdc'){
+      on($p); on($s); off($pt); off($st); $s.prop('required', true);
+      setOMCState($form, true); setBDCState($form, false);
+    } else {
+      on($p); on($s); on($pt); on($st); $s.prop('required', true); $st.prop('required', true);
+      setOMCState($form, false); setBDCState($form, false);
+    }
+    setPaymentUI($form, mode);
+  }
+
+  function computeDebtByMode(mode, s, sTax, q){
+    let amount = 0, label = "—", preview = "—";
+    if (mode === 'combo'){
+      const perL = (s > 0 ? s : 0) + (sTax > 0 ? sTax : 0);
+      amount = perL * q; label = "(S-BDC + S-Tax) × Q";
+      preview = `Q = ${q.toLocaleString()} → (${toFixed2(s)} + ${toFixed2(sTax)}) × ${q.toLocaleString()} = ${fmt(amount)}`;
+    } else if (mode === 's_bdc'){
+      amount = s * q; label = "S-BDC × Q";
+      preview = `Q = ${q.toLocaleString()} → ${toFixed2(s)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+    } else if (mode === 's_tax'){
+      amount = sTax * q; label = "S-Tax × Q";
+      preview = `Q = ${q.toLocaleString()} → ${toFixed2(sTax)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+    }
+    return { amount, label, preview };
+  }
+
+  function computeFormValues($form){
+    const p    = toNum($form.find('.p_bdc_input').val());
+    const s    = toNum($form.find('.s_bdc_input').val());
+    const pTax = toNum($form.find('.p_tax_input').val());
+    const sTax = toNum($form.find('.s_tax_input').val());
+    const q    = toNum($form.data('qty'));
+    const mode = ($form.find('.order_type').val() || 'combo');
+
+    const marginPrice = (s - p);
+    const marginTax   = (sTax - pTax);
+
+    const returnsPrice = marginPrice * q;
+    const returnsTax   = marginTax * q;
+    const returnsTotal = returnsPrice + returnsTax;
+
+    const debtObj = computeDebtByMode(mode, s, sTax, q);
+
+    $form.find('.margin_input').val(toFixed2(marginPrice));
+    $form.find('.margin_tax_input').val(toFixed2(marginTax));
+    $form.find('.returns_sbdc_input').val(toFixed2(returnsPrice));
+    $form.find('.returns_stax_input').val(toFixed2(returnsTax));
+    $form.find('.returns_total_input').val(toFixed2(returnsTotal));
+    $form.find('.returns_input').val(toFixed2(returnsTotal));
+    $form.find('.total_debt_input').val(toFixed2(debtObj.amount));
+
+    $form.find('.margin_view').val(fmt(marginPrice));
+    $form.find('.margin_tax_view').val(fmt(marginTax));
+    $form.find('.returns_sbdc_display').text(fmt(returnsPrice));
+    $form.find('.returns_stax_display').text(fmt(returnsTax));
+    $form.find('.returns_total_display').text(fmt(returnsTotal));
+    $form.find('.total_debt_view').val(fmt(debtObj.amount));
+
+    $form.find('.debt-formula-chip').text(`Formula: ${debtObj.label}`);
+    $form.find('.debt-preview').text(debtObj.preview);
+
+    const pricePart = toFixed2(marginPrice);
+    const taxPart   = toFixed2(marginTax);
+    $form.find('.returns-formula-chip').text(`Formula: (${pricePart} + ${taxPart}) × Q`);
+    $form.find('.returns-preview').text(`Q = ${q.toLocaleString()} → (${pricePart} + ${taxPart}) × ${q.toLocaleString()} = ${fmt(returnsTotal)}`);
+
+    // Payment hint
+    const payType = ($form.find('.payment-type-select').val() || '').toLowerCase();
+    if (payType === 'cash' || payType === 'from account' || payType === 'credit') {
+      const payAmt = q * p;
+      $form.find('input[name="payment_amount"]').val(toFixed2(payAmt));
+      $form.find('.payment-amount-view').text(`= ${fmt(payAmt)} GHS`);
+      $form.find('.payment-amount-wrapper').removeClass('d-none');
+    } else {
+      $form.find('.payment-amount-view').text('');
+    }
+  }
+
+  function setPaymentUI($form, mode){
+    const $typeSel = $form.find('.payment-type-select');
+    const $amtWrap = $form.find('.payment-amount-wrapper');
+    const $amtInp  = $form.find('input[name="payment_amount"]');
+
+    if (mode === 's_tax'){
+      $typeSel.val('').prop('disabled', true).prop('required', false).addClass('dimmed');
+      $amtInp.val('').prop('disabled', true).prop('required', false);
+      $amtWrap.addClass('d-none');
+      $form.find('.payment-amount-view').text('');
+    } else {
+      $typeSel.prop('disabled', false).removeClass('dimmed');
+      $typeSel.prop('required', false);
+      $amtInp.prop('required', false).prop('disabled', false);
+      const hasType = ($typeSel.val() || '').length > 0;
+      $amtWrap.toggleClass('d-none', !hasType);
+    }
+  }
+
+  // Events
+  $(document).on('input', '.p_bdc_input, .s_bdc_input, .p_tax_input, .s_tax_input', function(){
+    const $form = $(this).closest('form');
+    computeFormValues($form);
+  });
+  $(document).on('change', '.payment-type-select', function () {
+    const $form = $(this).closest('form');
+    setPaymentUI($form, $form.find('.order_type').val() || 'combo');
+    computeFormValues($form);
+  });
+
+  // Fetch prices
+  $(document).on('click', '.fetch-price-btn', function () {
+    const btn = $(this);
+    const product = btn.data('product');
+    const $form = btn.closest('form');
+    const mode = ($form.find('.order_type').val() || 'combo');
+
+    showSpinner();
+    $.get('/orders/get_product_price', { name: product })
+      .done(function (res) {
+        const $p  = $form.find('.p_bdc_input');
+        const $s  = $form.find('.s_bdc_input');
+        const $pt = $form.find('.p_tax_input');
+        const $st = $form.find('.s_tax_input');
+
+        if (!res || res.success !== true) {
+          showNotice(res?.error || 'Failed to fetch price', 'Price Lookup Error');
+          return;
+        }
+        if (mode === 's_tax') {
+          if (res.p_tax != null) $pt.val(res.p_tax);
+          if (res.s_tax != null) $st.val(res.s_tax);
+        } else if (mode === 's_bdc') {
+          if (res.p_price != null) $p.val(res.p_price);
+          if (res.s_price != null) $s.val(res.s_price);
+        } else {
+          if (res.p_price != null) $p.val(res.p_price);
+          if (res.s_price != null) $s.val(res.s_price);
+          if (res.p_tax   != null) $pt.val(res.p_tax);
+          if (res.s_tax   != null) $st.val(res.s_tax);
+        }
+        computeFormValues($form);
+      })
+      .fail(function (xhr) {
+        const err = xhr.responseJSON?.error || 'Failed to fetch price';
+        showNotice(err, 'Price Lookup Error');
+      })
+      .always(hideSpinner);
+  });
+
+  // ---- DUE DATE guard ----
+  function localISODate(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function applyDueDateGuards(){
+    const todayStr = localISODate(new Date());
+    $('.due_date_input').each(function(){
+      this.min = todayStr;
+      if (this.value && this.value < todayStr){ this.value = todayStr; }
+      this.addEventListener('input', function(){
+        if (this.value && this.value < todayStr){
+          this.setCustomValidity('Due date cannot be in the past. Choose today or a future date.');
+        } else { this.setCustomValidity(''); }
+      });
+    });
+  }
+
+  // Init
+  $(document).ready(function () {
+    $('.omc-select, .bdc-select').each(function () {
+      const $modal = $(this).closest('.modal');
+      $(this).select2({
+        placeholder: "Select or search...",
+        dropdownParent: $modal.length ? $modal : $(document.body),
+        width: '100%'
+      });
+    });
+
+    $('.order-update-form').each(function(){
+      const $form = $(this);
+      const mode = $form.find('.order_type').val() || 'combo';
+      setModeUI($form, mode);
+      computeFormValues($form);
+    });
+
+    applyDueDateGuards();
+  });
+
+  // Submit (Confirm)
+  $(document).on('submit', '.order-update-form', function (e) {
+    e.preventDefault();
+    const $form = $(this);
+    const $due = $form.find('.due_date_input');
+    if ($due.length){
+      const todayStr = localISODate(new Date());
+      const val = $due.val();
+      if (val && val < todayStr){
+        $due[0].setCustomValidity('Due date cannot be in the past. Choose today or a future date.');
+        $due[0].reportValidity();
+        return;
+      } else { $due[0].setCustomValidity(''); }
+    }
+
+    showSpinner();
+    $.post(`/orders/update/${$form.data('id')}`, $form.serialize())
+      .done(function (res) {
+        if (res.approved && res.invoice_url) {
+          const a = document.createElement('a');
+          a.href = res.invoice_url; a.target = '_blank'; a.rel = 'noopener';
+          document.body.appendChild(a); a.click(); a.remove();
+          // clean any modal/backdrop before navigating
+          resetModalState();
+          if (typeof loadContent === 'function') setTimeout(() => loadContent('/orders','Review Orders'), 150);
+          else setTimeout(() => location.reload(), 150);
+          return;
+        }
+        showNotice(res.message || 'Saved.', 'Order Updated');
+        setTimeout(() => {
+          resetModalState();
+          (typeof loadContent === 'function' ? loadContent('/orders','Review Orders') : location.reload());
+        }, 700);
+      })
+      .fail(function (xhr) {
+        const err = xhr.responseJSON?.error || 'Failed to update order.';
+        showNotice(err, 'Update Error');
+      })
+      .always(hideSpinner);
+  });
+
+  // DECLINE flow (with confirm + spinner)
+  $(document).on('click', '.decline-btn', async function(){
+    const id = $(this).data('id');
+    if (!id) return;
+    const ok = await confirmDialog('Decline this order? This cannot be undone.', 'Decline Order');
+    if (!ok) return;
+
+    showSpinner();
+    $.post(`/orders/decline/${id}`)
+      .done(function(res){
+        showNotice('Order was declined.', 'Declined');
+        setTimeout(() => {
+          resetModalState();
+          (typeof loadContent === 'function' ? loadContent('/orders','Review Orders') : location.reload());
+        }, 600);
+      })
+      .fail(function(xhr){
+        const err = xhr.responseJSON?.error || 'Failed to decline order.';
+        showNotice(err, 'Decline Error');
+      })
+      .always(hideSpinner);
+  });
+
+  // WhatsApp buttons (use modals for errors)
+  $(document).on('click', '.send-omc-btn', function(){
+    const $form = $(this).closest('form');
+    const $omcSel = $form.find('.omc-select');
+    if ($omcSel.prop('disabled')) { showNotice('OMC is not required for this order type.', 'Not Required'); return; }
+    const $omcOpt = $omcSel.find('option:selected');
+    const phoneRaw = $omcOpt.data('rep-phone') || '';
+    const phone = normalizePhone(phoneRaw);
+    if(!$omcOpt.val()){ showNotice('Select an OMC first.', 'Missing OMC'); return; }
+    if(!phone){ showNotice('OMC rep phone number is missing for this OMC.', 'Missing Phone'); return; }
+    const msg = buildMessage($form, false);
+    openWhatsApp(phone, msg);
+  });
+
+  $(document).on('click', '.send-bdc-btn', function(){
+    const $form   = $(this).closest('form');
+    const $bdcSel = $form.find('.bdc-select');
+    if ($bdcSel.prop('disabled')) { showNotice('BDC is not required for this order type.', 'Not Required'); return; }
+
+    const $bdcOpt  = $bdcSel.find('option:selected');
+    const phoneRaw = $bdcOpt.data('rep-phone') || '';
+    const phone    = normalizePhone(phoneRaw);
+    if (!$bdcOpt.val()) { showNotice('Select a BDC first.', 'Missing BDC'); return; }
+
+    const id     = $form.data('id');
+    const $modal = $(`#detailsModal${id}`);
+    const depot  = ($form.find('.depot_input').val() || $modal.data('depot') || '').toString().trim();
+    if (!depot) {
+      showNotice('Please enter/select a Depot before sending to BDC.', 'Depot Required');
+      $form.find('.depot_input').focus();
+      return;
+    }
+    if(!phone){ showNotice('BDC rep phone number is missing for this BDC.', 'Missing Phone'); return; }
+
+    const msg = buildMessage($form, true);
+    openWhatsApp(phone, msg);
+  });
+</script>
+</body>
+</html>

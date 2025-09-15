@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Truetype Group Holdings • Driving Innovation, Fueling Growth</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="https://static.wixstatic.com/media/13bf20_85bc952de62849e895a80e274750784b~mv2.png/v1/fill/w_392,h_146,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/13bf20_85bc952de62849e895a80e274750784b~mv2.png" type="image/png">
+
+  <!-- SEO -->
+  <meta name="description" content="Truetype Group Holdings is a diversified conglomerate in Energy, Construction, Oil & Gas Brokerage, and Manufacturing & Trading.">
+  <meta name="theme-color" content="#0f172a">
+
+  <!-- Bootstrap & Animate -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --primary:#1e3a8a; --accent:#22c55e;
+      --border:#e5e7eb; --card:#ffffff; --bg:#f8fafc;
+    }
+    body {background:var(--bg); color:var(--ink); font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}
+
+    /* Navbar */
+    .navbar{backdrop-filter: blur(8px); box-shadow:0 2px 10px rgba(0,0,0,.05);}
+    .navbar-brand img{height:46px;}
+
+    /* Hero (kept from your current version) */
+    .hero{
+      position:relative;
+      background:linear-gradient(to bottom right,#0f172a,#1e3a8a);
+      color:white; overflow:hidden;
+    }
+    .hero::before{
+      content:""; position:absolute; inset:0;
+      background:url('https://images.unsplash.com/photo-1503387762-592deb58ef4e?q=80&w=1600&auto=format&fit=crop') center/cover;
+      opacity:.25; animation: zoom 20s infinite alternate;
+    }
+    @keyframes zoom{from{transform:scale(1);} to{transform:scale(1.15);}}
+    .hero-content{position:relative; z-index:2; padding:6rem 0;}
+    .hero h1{font-weight:800;}
+    .hero p{font-size:1.2rem; max-width:600px;}
+
+    .btn-get{
+      background:var(--accent); border:none; font-weight:600; padding:.75rem 1.5rem;
+      box-shadow:0 6px 18px rgba(34,197,94,.35);
+      transition:.3s;
+    }
+    .btn-get:hover{background:#16a34a; transform:translateY(-2px);}
+
+    /* ---------- PRO Services (cards with image headers + overlays) ---------- */
+    .section-kicker{letter-spacing:.12em; text-transform:uppercase; font-weight:700; color:#0369a1;}
+    .services-grid{display:grid; gap:22px; grid-template-columns:repeat(12,minmax(0,1fr));}
+    /* masonry-like layout */
+    .svc{grid-column: span 12; }
+    @media (min-width: 992px){
+      .svc--lg{grid-column: span 6;}
+      .svc--sm{grid-column: span 3;}
+    }
+    .svc-card{
+      position:relative; overflow:hidden; border-radius:16px;
+      background:var(--card); border:1px solid var(--border);
+      box-shadow:0 12px 30px rgba(2,6,23,.06);
+      transition:transform .5s cubic-bezier(.2,.6,.2,1), box-shadow .3s;
+      will-change: transform;
+    }
+    .svc-card:hover{transform:translateY(-6px); box-shadow:0 18px 45px rgba(2,6,23,.08);}
+    .svc-media{
+      position:relative; height:220px; background:#000;
+    }
+    .svc-media img{width:100%; height:100%; object-fit:cover; filter:contrast(1.05) saturate(1.05) brightness(.9); transform:scale(1.02); transition:transform 1.2s ease;}
+    .svc-card:hover .svc-media img{transform:scale(1.08);}
+    .svc-badge{
+      position:absolute; top:14px; left:14px; background:rgba(255,255,255,.85);
+      backdrop-filter: blur(6px); border-radius:12px; padding:.35rem .6rem; font-weight:700; font-size:.8rem;
+      display:flex; align-items:center; gap:.4rem;
+    }
+    .svc-body{padding:18px 18px 20px 18px;}
+    .svc-title{display:flex; align-items:center; gap:.5rem; font-weight:800; margin-bottom:6px;}
+    .svc-title i{color:#2563eb;}
+    .svc-desc{color:var(--muted); margin:0 0 10px;}
+    .svc-meta{display:flex; gap:14px; color:#475569; font-size:.92rem;}
+    .svc-meta i{opacity:.8;}
+
+    /* slide-in animations */
+    [data-animate]{opacity:0; transform:translateY(24px); transition:opacity .8s ease, transform .8s ease;}
+    [data-animate].active{opacity:1; transform:none;}
+    .slide-l{opacity:0; transform:translateX(-28px);}
+    .slide-r{opacity:0; transform:translateX(28px);}
+    .slide-l.active,.slide-r.active{opacity:1; transform:none; transition:opacity .85s ease, transform .85s ease;}
+
+    /* ---------- Subsidiaries: robust logos + slider ---------- */
+    .subs-wrap{position:relative;}
+    .subs-grid{display:grid; gap:18px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));}
+    .subs-card{
+      border:1px solid var(--border); border-radius:14px; background:#fff;
+      padding:16px; text-align:center; height:100%;
+      box-shadow:0 8px 24px rgba(0,0,0,.04); transition:.3s;
+    }
+    .subs-card:hover{transform:translateY(-4px);}
+    .subs-logo{
+      height:56px; object-fit:contain; filter:grayscale(0%);
+    }
+    .subs-name{font-weight:700; margin-top:10px;}
+    .subs-card p{color:var(--muted); font-size:.95rem;}
+    /* fallback badge if image fails */
+    .logo-fallback{
+      display:none; border-radius:999px; background:#eff6ff; border:1px dashed #cbd5e1; color:#0f172a;
+      padding:.4rem .7rem; font-weight:700; font-size:.9rem; margin:0 auto;
+    }
+
+    /* Horizontal auto-slider for partner strip */
+    .strip{overflow:hidden; border:1px solid var(--border); background:#fff; border-radius:14px;}
+    .strip-track{display:flex; gap:36px; padding:16px 18px; animation:scrollx 22s linear infinite;}
+    .strip-track img{height:36px; object-fit:contain; opacity:.9;}
+    @keyframes scrollx{
+      0%{transform:translateX(0);}
+      100%{transform:translateX(-50%);}
+    }
+
+    /* Footer */
+    .footer{background:#0f172a; color:#e2e8f0;}
+    .footer a{color:#cbd5e1; text-decoration:none;}
+    .footer a:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="navbar navbar-expand-lg sticky-top bg-white">
+  <div class="container">
+    <a class="navbar-brand" href="#">
+      <img src="https://static.wixstatic.com/media/13bf20_85bc952de62849e895a80e274750784b~mv2.png/v1/fill/w_392,h_146,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/13bf20_85bc952de62849e895a80e274750784b~mv2.png" alt="Truetype Logo">
+    </a>
+    <button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#nav"><span class="navbar-toggler-icon"></span></button>
+    <div id="nav" class="collapse navbar-collapse">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="#services">Services</a></li>
+        <li class="nav-item"><a class="nav-link" href="#subsidiaries">Subsidiaries</a></li>
+        <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
+        <li class="nav-item"><a class="btn btn-get ms-lg-3" href="/login">Get Started</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO (unchanged content) -->
+<header class="hero text-center text-lg-start">
+  <div class="hero-content container animate__animated animate__fadeIn">
+    <div class="row align-items-center">
+      <div class="col-lg-7">
+        <h1 class="display-4 mb-3">Driving Innovation, Fueling Growth</h1>
+        <p>We are a diversified conglomerate in Energy, Construction, Oil & Gas Brokerage, and Manufacturing & Trading, delivering value across Ghana and beyond.</p>
+        <div class="mt-4">
+          <a href="/login" class="btn btn-get btn-lg"><i class="bi bi-play-circle me-1"></i> Get Started</a>
+        </div>
+      </div>
+      <div class="col-lg-5 mt-5 mt-lg-0 text-center">
+        <img src="https://www.offshore-technology.com/wp-content/uploads/sites/20/2020/10/Feature-Image-Top-ten-oil-and-gas-companies.jpg" class="img-fluid rounded-4 shadow-lg animate__animated animate__fadeInRight" alt="Business Growth" loading="lazy">
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- =============== PRO SERVICES SECTION =============== -->
+<section id="services" class="py-5">
+  <div class="container">
+    <p class="section-kicker mb-1">What we do</p>
+    <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+      <h2 class="fw-bold m-0">Our Core Services</h2>
+      <a href="https://www.truetypegroupholdings.com/about-us" target="_blank" rel="noopener" class="text-decoration-none">
+        Learn more <i class="bi bi-arrow-right"></i>
+      </a>
+    </div>
+
+    <div class="services-grid">
+      <!-- Energy (large) -->
+      <article class="svc svc--lg">
+        <div class="svc-card slide-l" data-animate>
+          <div class="svc-media">
+            <img
+              src="https://static.wixstatic.com/media/c4a567_d53698a1dfec413587656770f2732be3~mv2.jpg/v1/fill/w_1898,h_707,al_b,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/c4a567_d53698a1dfec413587656770f2732be3~mv2.jpg"
+              alt="Energy solutions" loading="lazy">
+            <div class="svc-badge"><i class="bi bi-fuel-pump"></i> Energy</div>
+          </div>
+          <div class="svc-body">
+            <h3 class="svc-title"><i class="bi bi-lightning-charge"></i> Innovative Energy Solutions</h3>
+            <p class="svc-desc">Reliable downstream operations, efficiency programs, and cleaner-energy initiatives tailored to market demands.</p>
+            <div class="svc-meta">
+              <span><i class="bi bi-geo-alt"></i> Ghana • West Africa</span>
+              <span><i class="bi bi-shield-check"></i> Compliance-driven</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Construction (small) -->
+      <article class="svc svc--sm">
+        <div class="svc-card slide-r" data-animate>
+          <div class="svc-media">
+            <img
+              src="https://ccemagazine.com/wp-content/uploads/sites/11/2025/04/types-of-building-construction-types.png"
+              alt="Construction" loading="lazy">
+            <div class="svc-badge"><i class="bi bi-building"></i> Construction</div>
+          </div>
+          <div class="svc-body">
+            <h3 class="svc-title"><i class="bi bi-bricks"></i> Infrastructure Delivery</h3>
+            <p class="svc-desc">Civil works, commercial builds, and fit-outs that meet stringent timelines and quality metrics.</p>
+            <div class="svc-meta">
+              <span><i class="bi bi-clock-history"></i> On-time</span>
+              <span><i class="bi bi-graph-up"></i> Cost-optimized</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Oil & Gas Brokerage (small) -->
+      <article class="svc svc--sm">
+        <div class="svc-card slide-r" data-animate>
+          <div class="svc-media">
+            <img
+              src="https://www.offshore-technology.com/wp-content/uploads/sites/20/2020/10/Feature-Image-Top-ten-oil-and-gas-companies.jpg"
+              alt="Oil and Gas Brokerage" loading="lazy">
+            <div class="svc-badge"><i class="bi bi-droplet-half"></i> Oil & Gas</div>
+          </div>
+          <div class="svc-body">
+            <h3 class="svc-title"><i class="bi bi-diagram-3"></i> Consultant & Advisory</h3>
+            <p class="svc-desc">Sourcing, matching, and executing petroleum trades with risk controls and documentation rigor.</p>
+            <div class="svc-meta">
+              <span><i class="bi bi-file-earmark-text"></i> Due diligence</span>
+              <span><i class="bi bi-people"></i> Trusted network</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Manufacturing & Trading (large) -->
+      <article class="svc svc--lg">
+        <div class="svc-card slide-l" data-animate>
+          <div class="svc-media">
+            <img
+              src="https://datakulture.com/static/190502c9e8533923249c080f6ff1823f/036f3/logistics_Inventory_management_7e1385f186.png"
+              alt="Manufacturing and Trading" loading="lazy">
+            <div class="svc-badge"><i class="bi bi-box-seam"></i> Manufacturing & Trading</div>
+          </div>
+          <div class="svc-body">
+            <h3 class="svc-title"><i class="bi bi-box"></i> Scaled Product Supply</h3>
+            <p class="svc-desc">Quality-controlled manufacturing and regional trade flows backed by logistics and inventory visibility.</p>
+            <div class="svc-meta">
+              <span><i class="bi bi-truck"></i> Integrated logistics</span>
+              <span><i class="bi bi-check2-circle"></i> QA/QC standards</span>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- Partner / Sector strip (subtle motion) -->
+<section class="py-3">
+  <div class="container">
+    <div class="strip">
+      <div class="strip-track">
+        <img src="https://images.squarespace-cdn.com/content/v1/5579e8d0e4b08474eb9e164d/1617817556191-16OCNBHMIUJA5V3T34Q5/engine+oil.jpg" alt="Oil" loading="lazy">
+        <img src="https://cosmosmagazine.com/wp-content/uploads/2021/04/What-is-energy.jpg" alt="Energy" loading="lazy">
+        <img src="https://blog.engineering.vanderbilt.edu/hubfs/AdobeStock_222740403-1.jpeg" alt="Construction" loading="lazy">
+        <img src="https://vuniversity.in/wp-content/uploads/2023/10/Industrial%E2%80%90factories.png" alt="Factory" loading="lazy">
+        <!-- duplicate for seamless loop -->
+        <img src="https://images.squarespace-cdn.com/content/v1/5579e8d0e4b08474eb9e164d/1617817556191-16OCNBHMIUJA5V3T34Q5/engine+oil.jpg" alt="Oil" loading="lazy">
+        <img src="https://cosmosmagazine.com/wp-content/uploads/2021/04/What-is-energy.jpg" alt="Energy" loading="lazy">
+        <img src="https://blog.engineering.vanderbilt.edu/hubfs/AdobeStock_222740403-1.jpeg" alt="Construction" loading="lazy">
+        <img src="https://vuniversity.in/wp-content/uploads/2023/10/Industrial%E2%80%90factories.png" alt="Factory" loading="lazy">
+        <!-- duplicate for seamless loop -->
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== SUBSIDIARIES (robust logos + fallbacks) =============== -->
+<section id="subsidiaries" class="py-5 bg-light">
+  <div class="container">
+    <div class="d-flex align-items-end justify-content-between flex-wrap gap-2 mb-3">
+      <h2 class="fw-bold m-0">Our Subsidiaries</h2>
+      <span class="text-muted">Click to visit their pages</span>
+    </div>
+
+    <div class="subs-wrap">
+      <div class="subs-grid">
+        <!-- Truetype Energy -->
+        <a class="subs-card" href="https://www.truetypegroupholdings.com/truetype-energy" target="_blank" rel="noopener" data-animate>
+          <img class="subs-logo"
+               src="https://www.truetypegroupholdings.com/wp-content/uploads/2024/04/new-Logo-Final-.png"
+               alt="Truetype Energy" loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+          <span class="logo-fallback">Truetype Energy</span>
+          <div class="subs-name">Truetype Energy</div>
+          <p>Downstream operations & energy solutions.</p>
+        </a>
+
+        <!-- Truetype Construction -->
+        <a class="subs-card" href="https://www.truetypegroupholdings.com/truetype-construction" target="_blank" rel="noopener" data-animate>
+          <img class="subs-logo"
+               src="https://www.truetypegroupholdings.com/wp-content/uploads/2024/04/Truetype-Construction.png"
+               alt="Truetype Construction" loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+          <span class="logo-fallback">Truetype Construction</span>
+          <div class="subs-name">Truetype Construction</div>
+          <p>Infrastructure, civil works & fit-outs.</p>
+        </a>
+
+        <!-- Truetype Service -->
+        <a class="subs-card" href="https://www.truetypegroupholdings.com/truetype-service" target="_blank" rel="noopener" data-animate>
+          <img class="subs-logo"
+               src="https://www.truetypegroupholdings.com/wp-content/uploads/2024/04/Truetype-Service-.png"
+               alt="Truetype Service" loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+          <span class="logo-fallback">Truetype Service</span>
+          <div class="subs-name">Truetype Service</div>
+          <p>Multi-sector operational services.</p>
+        </a>
+
+        <!-- Life Energy -->
+        <a class="subs-card" href="https://www.truetypegroupholdings.com/life-energy" target="_blank" rel="noopener" data-animate>
+          <img class="subs-logo"
+               src="https://www.truetypegroupholdings.com/wp-content/uploads/2024/04/Life-Energy.png"
+               alt="Life Energy" loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+          <span class="logo-fallback">Life Energy</span>
+          <div class="subs-name">Life Energy</div>
+          <p>Energy solutions & sustainability.</p>
+        </a>
+
+        <!-- Phaino Foundation -->
+        <a class="subs-card" href="https://www.truetypegroupholdings.com/phaino-foundation" target="_blank" rel="noopener" data-animate>
+          <img class="subs-logo"
+               src="https://www.truetypegroupholdings.com/wp-content/uploads/2024/04/Phaino-Foundation.png"
+               alt="Phaino Foundation" loading="lazy" referrerpolicy="no-referrer"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+          <span class="logo-fallback">Phaino Foundation</span>
+          <div class="subs-name">Phaino Foundation</div>
+          <p>Community & social impact programs.</p>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact" class="py-5 text-center">
+  <div class="container" data-animate>
+    <h2 class="fw-bold">Get In Touch</h2>
+    <p class="mb-4">Tema Community 25, Kpone Katamanso, Greater Accra • Mon–Fri 9:00–17:00</p>
+    <p>
+      <a href="tel:+233558626362" class="btn btn-get me-2"><i class="bi bi-telephone"></i> Call</a>
+      <a href="mailto:info@truetypegroupholdings.com" class="btn btn-outline-secondary"><i class="bi bi-envelope"></i> Email</a>
+      <a href="/login" class="btn btn-get ms-2"><i class="bi bi-play"></i> Get Started</a>
+    </p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer py-4 text-center">
+  <div class="container">
+    <p>© <span id="year"></span> Truetype Group Holdings. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+
+  // IntersectionObserver to reveal on scroll
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        e.target.classList.add("active");
+        obs.unobserve(e.target);
+      }
+    });
+  },{threshold:.2});
+  document.querySelectorAll("[data-animate]").forEach(el=>obs.observe(el));
+</script>
+<script>
+  window.cbConfig = {
+    chatId: "255228db-274b-4670-9fab-cad8e2da3546"
+  };
+</script>
+<script src="https://app.chatbit.co/embed.min.js" defer></script>
+</body>
+</html>
+
+

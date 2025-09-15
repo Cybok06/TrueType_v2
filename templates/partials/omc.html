@@ -1,0 +1,440 @@
+<!-- templates/partials/omc.html -->
+   <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+<div id="omc-root" class="container py-4">
+
+  <!-- Header: icon (no emojis) + search + add -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <h4 class="fw-bold mb-0 d-flex align-items-center gap-2 text-primary">
+      <i class="bi bi-building-check"></i> OMC Companies
+    </h4>
+
+    <div class="d-flex align-items-center gap-2 ms-md-auto">
+      <div class="input-group">
+        <input id="omc-search-input" type="search" class="form-control" placeholder="Search name, phone, location, rep…" />
+        <button id="omc-search-btn" class="btn btn-outline-primary"><i class="bi bi-search"></i></button>
+        <button id="omc-clear-btn" class="btn btn-outline-secondary"><i class="bi bi-x-circle"></i></button>
+      </div>
+      <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-2" data-bs-toggle="collapse" data-bs-target="#addOMCSection">
+        <i class="bi bi-plus-circle"></i> New OMC
+      </button>
+    </div>
+  </div>
+
+  <!-- Create form -->
+  <div id="addOMCSection" class="collapse mb-4">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h6 class="mb-3 fw-semibold d-flex align-items-center gap-2">
+          <i class="bi bi-building-add"></i> Register New OMC
+        </h6>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Name</label>
+            <input type="text" id="omc-name" class="form-control" placeholder="Enter OMC Name" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Phone</label>
+            <input type="text" id="omc-phone" class="form-control" placeholder="Phone Number" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted">Location</label>
+            <input type="text" id="omc-location" class="form-control" placeholder="Location" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small text-muted">Rep Name</label>
+            <input type="text" id="omc-rep-name" class="form-control" placeholder="Rep Name" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small text-muted">Rep Phone</label>
+            <input type="text" id="omc-rep-phone" class="form-control" placeholder="Rep Phone" />
+          </div>
+          <div class="col-12 text-end">
+            <button class="btn btn-primary px-4 d-inline-flex align-items-center gap-2" onclick="addOMC()">
+              <i class="bi bi-check2-circle"></i> Create OMC
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results summary -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <small id="omc-results-summary" class="text-muted"></small>
+  </div>
+
+  <!-- Table list -->
+  <div class="card shadow-sm border-0">
+    <div class="table-responsive">
+      <table class="table align-middle table-hover mb-0">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th style="min-width: 220px;">Name</th>
+            <th style="min-width: 140px;">Phone</th>
+            <th style="min-width: 160px;">Location</th>
+            <th style="min-width: 180px;">Rep Name</th>
+            <th style="min-width: 140px;">Rep Phone</th>
+            <th class="text-end" style="min-width: 140px;">Created</th>
+            <th class="text-end" style="min-width: 120px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="omc-list">
+          {% for omc in omcs %}
+            <tr class="omc-item"
+                data-id="{{ omc._id }}"
+                data-name="{{ (omc.name or '')|e }}"
+                data-phone="{{ (omc.phone or '')|e }}"
+                data-location="{{ (omc.location or '')|e }}"
+                data-rep-name="{{ (omc.rep_name or '')|e }}"
+                data-rep-phone="{{ (omc.rep_phone or '')|e }}"
+                data-created="{{ omc.date_created.strftime('%Y-%m-%d %H:%M') if omc.date_created else '' }}">
+              <td class="fw-semibold text-primary">{{ omc.name or '—' }}</td>
+              <td><i class="bi bi-telephone me-2 text-muted"></i>{{ omc.phone or '—' }}</td>
+              <td><i class="bi bi-geo-alt me-2 text-muted"></i>{{ omc.location or '—' }}</td>
+              <td><i class="bi bi-person-badge me-2 text-muted"></i>{{ omc.rep_name or '—' }}</td>
+              <td><i class="bi bi-telephone-inbound me-2 text-muted"></i>{{ omc.rep_phone or '—' }}</td>
+              <td class="text-end"><span class="text-muted">{{ omc.date_created.strftime('%Y-%m-%d %H:%M') if omc.date_created else '—' }}</span></td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                        onclick="openEditModal(this)"
+                        title="Edit">
+                  <i class="bi bi-pencil-square"></i> Edit
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-footer bg-white">
+      <nav aria-label="OMC pagination" class="mt-2 mb-1">
+        <ul id="omc-pagination" class="pagination justify-content-center mb-0"></ul>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<!-- Local page styles (safe to duplicate) -->
+<style>
+  #omc-root { background: #f6f7fb; }
+  .table thead th { position: sticky; top: 0; background: #f8fafc !important; z-index: 1; }
+  .table-hover tbody tr:hover { background-color: #f6f9ff; }
+  .pagination .page-link { border-radius: .5rem; }
+  .modal .form-label { font-size: .825rem; color: #6b7280; }
+</style>
+
+<!-- Self-bootstrapping asset loader + page logic -->
+<script>
+(function(){
+  // Inject CSS only if missing (safe when embedded or standalone)
+  function ensureCSS(href, id){
+    if (id && document.getElementById(id)) return;
+    if ([...document.styleSheets].some(s => s.href && s.href.includes(href))) return;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = href; if (id) l.id = id;
+    document.head.appendChild(l);
+  }
+
+  // Load JS only if missing (Bootstrap JS)
+  function ensureScript(src, id){
+    return new Promise((resolve, reject) => {
+      if (window.bootstrap) return resolve(); // already loaded
+      const existing = id ? document.getElementById(id) : null;
+      if (existing) { existing.addEventListener('load', resolve, {once:true}); return; }
+      const s = document.createElement('script');
+      s.src = src; if (id) s.id = id;
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // Always ensure assets (no-ops if already present)
+  ensureCSS("https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css", "_bs5css");
+  ensureCSS("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css", "_bsicons");
+
+  function initOMCPage(){
+    // ===== Seed data
+    const seedNodes = Array.from(document.querySelectorAll('.omc-item'));
+    const omcsData = seedNodes.map(n => ({
+      id: n.dataset.id || '',
+      name: n.dataset.name || '',
+      phone: n.dataset.phone || '',
+      location: n.dataset.location || '',
+      rep_name: n.dataset.repName || '',
+      rep_phone: n.dataset.repPhone || '',
+      created: n.dataset.created || ''
+    }));
+
+    const $tbody   = document.getElementById('omc-list');
+    const $pager   = document.getElementById('omc-pagination');
+    const $summary = document.getElementById('omc-results-summary');
+    const $q       = document.getElementById('omc-search-input');
+
+    const PAGE_SIZE = 10;
+    let currentPage = 1;
+    let currentQuery = '';
+    let filtered = [...omcsData];
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"'`=\/]/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','=':'&#61;','/':'&#47;'}[c])
+      );
+    }
+    function fmtDate(x) { return x || '—'; }
+
+    function buildRow(item) {
+      return `
+        <tr data-id="${item.id}">
+          <td class="fw-semibold text-primary">${escapeHtml(item.name || '—')}</td>
+          <td><i class="bi bi-telephone me-2 text-muted"></i>${escapeHtml(item.phone || '—')}</td>
+          <td><i class="bi bi-geo-alt me-2 text-muted"></i>${escapeHtml(item.location || '—')}</td>
+          <td><i class="bi bi-person-badge me-2 text-muted"></i>${escapeHtml(item.rep_name || '—')}</td>
+          <td><i class="bi bi-telephone-inbound me-2 text-muted"></i>${escapeHtml(item.rep_phone || '—')}</td>
+          <td class="text-end"><span class="text-muted">${fmtDate(item.created)}</span></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                    onclick="openEditModalById('${item.id}')">
+              <i class="bi bi-pencil-square"></i> Edit
+            </button>
+          </td>
+        </tr>`;
+    }
+
+    function applySearch() {
+      const q = (currentQuery || '').trim().toLowerCase();
+      if (!q) filtered = [...omcsData];
+      else {
+        filtered = omcsData.filter(x =>
+          [x.name, x.phone, x.location, x.rep_name, x.rep_phone]
+            .filter(Boolean).some(f => String(f).toLowerCase().includes(q))
+        );
+      }
+      currentPage = 1; render();
+    }
+
+    function renderList() {
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageItems = filtered.slice(start, start + PAGE_SIZE);
+      $tbody.innerHTML = pageItems.length ? pageItems.map(buildRow).join('')
+        : `<tr><td colspan="7" class="text-center text-muted py-5">No OMCs found.</td></tr>`;
+
+      const total = filtered.length, first = total ? start + 1 : 0, last = Math.min(start + PAGE_SIZE, total);
+      const queryTxt = currentQuery ? ` for "<span class="fw-semibold">${escapeHtml(currentQuery)}</span>"` : '';
+      $summary.innerHTML = `Showing <strong>${first}</strong>–<strong>${last}</strong> of <strong>${total}</strong>${queryTxt}.`;
+    }
+
+    function renderPager() {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      const disabledPrev = currentPage === 1 ? ' disabled' : '';
+      const disabledNext = currentPage === totalPages ? ' disabled' : '';
+
+      const windowSize = 5, half = Math.floor(windowSize / 2);
+      let start = Math.max(1, currentPage - half);
+      let end = Math.min(totalPages, start + windowSize - 1);
+      start = Math.max(1, Math.min(start, end - windowSize + 1));
+
+      let pagesHtml = '';
+      for (let p = start; p <= end; p++) {
+        pagesHtml += `
+        <li class="page-item${p === currentPage ? ' active' : ''}">
+          <button class="page-link" data-page="${p}" aria-label="Go to page ${p}">${p}</button>
+        </li>`;
+      }
+
+      $pager.innerHTML = `
+        <li class="page-item${disabledPrev}">
+          <button class="page-link" data-page="prev" aria-label="Previous">«</button>
+        </li>
+        ${start > 1 ? `<li class="page-item"><button class="page-link" data-page="1">1</button></li><li class="page-item disabled"><span class="page-link">…</span></li>` : ''}
+        ${pagesHtml}
+        ${end < totalPages ? `<li class="page-item disabled"><span class="page-link">…</span></li><li class="page-item"><button class="page-link" data-page="${totalPages}">${totalPages}</button></li>` : ''}
+        <li class="page-item${disabledNext}">
+          <button class="page-link" data-page="next" aria-label="Next">»</button>
+        </li>`;
+    }
+
+    function render(){ renderList(); renderPager(); }
+
+    // Pagination clicks
+    $pager.addEventListener('click', (e) => {
+      const btn = e.target.closest('button.page-link'); if (!btn) return;
+      const val = btn.getAttribute('data-page');
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (val === 'prev' && currentPage > 1) currentPage--;
+      else if (val === 'next' && currentPage < totalPages) currentPage++;
+      else {
+        const num = parseInt(val, 10);
+        if (!isNaN(num)) currentPage = num;
+      }
+      render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // Search controls
+    document.getElementById('omc-search-btn').addEventListener('click', () => { currentQuery = $q.value; applySearch(); });
+    document.getElementById('omc-clear-btn').addEventListener('click', () => { $q.value=''; currentQuery=''; applySearch(); });
+    $q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { currentQuery = $q.value; applySearch(); } });
+
+    // Initial render
+    render();
+
+    // ===== Create OMC
+    window.addOMC = function addOMC() {
+      const name      = document.getElementById('omc-name').value.trim();
+      const phone     = document.getElementById('omc-phone').value.trim();
+      const location  = document.getElementById('omc-location').value.trim();
+      const rep_name  = document.getElementById('omc-rep-name').value.trim();
+      const rep_phone = document.getElementById('omc-rep-phone').value.trim();
+
+      if (!name || !phone || !location || !rep_name || !rep_phone) {
+        return alert('Please fill in all fields including Representative Name and Phone.');
+      }
+
+      fetch('/omc/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, location, rep_name, rep_phone })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'success') {
+          const modalEl = document.getElementById('omcSuccessModal');
+          if (window.bootstrap && modalEl) {
+            new bootstrap.Modal(modalEl).show();
+          } else {
+            alert('OMC registered. Reloading…'); location.reload();
+          }
+        } else { alert(d.message || 'Failed to add OMC'); }
+      })
+      .catch(err => { console.error(err); alert('❌ Something went wrong.'); });
+    };
+
+    // ===== Edit OMC
+    window.openEditModal = function openEditModal(btnEl){
+      const tr = btnEl.closest('tr');
+      window.openEditModalById(tr?.dataset?.id);
+    };
+
+    window.openEditModalById = function openEditModalById(id){
+      const item = omcsData.find(x => x.id === id);
+      if (!item) return;
+
+      document.getElementById('edit-omc-id').value = item.id;
+      document.getElementById('edit-omc-name').value = item.name || '';
+      document.getElementById('edit-omc-phone').value = item.phone || '';
+      document.getElementById('edit-omc-location').value = item.location || '';
+      document.getElementById('edit-omc-rep-name').value = item.rep_name || '';
+      document.getElementById('edit-omc-rep-phone').value = item.rep_phone || '';
+
+      const modalEl = document.getElementById('omcEditModal');
+      if (window.bootstrap && modalEl) new bootstrap.Modal(modalEl).show();
+      else alert('Bootstrap JS not available for modal. Please save changes inline.');
+    };
+
+    window.saveOMCEdit = function saveOMCEdit(){
+      const id        = document.getElementById('edit-omc-id').value;
+      const name      = document.getElementById('edit-omc-name').value.trim();
+      const phone     = document.getElementById('edit-omc-phone').value.trim();
+      const location  = document.getElementById('edit-omc-location').value.trim();
+      const rep_name  = document.getElementById('edit-omc-rep-name').value.trim();
+      const rep_phone = document.getElementById('edit-omc-rep-phone').value.trim();
+
+      if (!name || !phone || !location || !rep_name || !rep_phone) {
+        return alert('All fields are required.');
+      }
+
+      fetch(`/omc/update/${encodeURIComponent(id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, location, rep_name, rep_phone })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'success') {
+          const idx = omcsData.findIndex(x => x.id === id);
+          if (idx >= 0) {
+            omcsData[idx] = { ...omcsData[idx], name, phone, location, rep_name, rep_phone };
+            applySearch();
+          }
+          const modalEl = document.getElementById('omcEditModal');
+          if (window.bootstrap && modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+        } else {
+          alert(d.message || 'Update failed.');
+        }
+      })
+      .catch(err => { console.error(err); alert('❌ Something went wrong.'); });
+    };
+  }
+
+  // If Bootstrap JS missing, load it, then init. Otherwise init immediately.
+  const whenReady = window.bootstrap
+    ? Promise.resolve()
+    : ensureScript("https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js", "_bs5js");
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => whenReady.then(initOMCPage), { once: true });
+  } else {
+    whenReady.then(initOMCPage);
+  }
+})();
+</script>
+
+<!-- Success Modal -->
+<div class="modal fade" id="omcSuccessModal" tabindex="-1" aria-labelledby="omcSuccessModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title" id="omcSuccessModalLabel"><i class="bi bi-check2-circle me-2"></i>OMC Registered</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="mb-2">The OMC has been successfully registered.</p>
+        <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">OK, Reload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="omcEditModal" tabindex="-1" aria-labelledby="omcEditModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title d-flex align-items-center gap-2" id="omcEditModalLabel">
+          <i class="bi bi-pencil-square"></i> Edit OMC
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-omc-id">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Name</label>
+            <input type="text" id="edit-omc-name" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input type="text" id="edit-omc-phone" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Location</label>
+            <input type="text" id="edit-omc-location" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Rep Name</label>
+            <input type="text" id="edit-omc-rep-name" class="form-control" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Rep Phone</label>
+            <input type="text" id="edit-omc-rep-phone" class="form-control" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cancel</button>
+        <button class="btn btn-primary d-inline-flex align-items-center gap-2" onclick="saveOMCEdit()">
+          <i class="bi bi-save2"></i> Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
