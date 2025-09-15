@@ -13,6 +13,7 @@ products_collection      = db['products']         # Products collection
 omc_collection           = db['bd_omc']           # OMCs (with rep_phone)
 s_bdc_payment_collection = db['s_bdc_payment']    # central BDC payment collection
 omc_payment_collection   = db['omc_payment']      # simple OMC-side posting collection
+truck_orders_collection  = db['truck_orders']     # 🚚 delivery/dispatch
 
 # ------------ harden uniqueness for BDC payments ------------
 def _ensure_unique_index():
@@ -95,7 +96,7 @@ def human_order_id(order) -> str:
 # --------------- pages ---------------
 @orders_bp.route('/', methods=['GET'])
 def view_orders():
-    if 'role' not in session or session['role'] != 'admin':
+    if 'role' not in session or session.get('role') != 'admin':
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
 
@@ -119,7 +120,8 @@ def view_orders():
         if client:
             order['client_name'] = client.get('name', 'No Name')
             order['client_image_url'] = client.get('image_url', '')
-            order['client_id'] = client.get('client_id', '')
+            # keep original client_id; expose a separate display code if you have one
+            order['client_code'] = client.get('client_id', '')
             order['client_profile_url'] = None
         else:
             order['client_name'] = 'Unknown'
@@ -150,13 +152,25 @@ def view_orders():
         order['returns_sbdc']  = round(ret_price, 2)   # price-margin × Q
         order['returns_stax']  = round(ret_tax, 2)     # tax-margin × Q
         order['returns_total'] = round(ret_total, 2)
-        order['returns']       = round(ret_total, 2 )  # legacy alias
+        order['returns']       = round(ret_total, 2)   # legacy alias
+
+        # ---- fetch/attach truck order (for delivery details + amount prefill) ----
+        try:
+            truck_order = truck_orders_collection.find_one({"order_ref": str(order["_id"])}) \
+                           or truck_orders_collection.find_one({"order_id": order.get("order_id")})
+        except Exception:
+            truck_order = None
+
+        order['truck_number']     = order.get('vehicle_number') or (truck_order or {}).get('truck_number')
+        order['driver_name']      = order.get('driver_name')    or (truck_order or {}).get('driver_name')
+        order['driver_phone']     = order.get('driver_phone')   or (truck_order or {}).get('driver_phone')
+        order['delivery_amount']  = (truck_order or {}).get('delivery_amount')
 
     return render_template('partials/orders.html', orders=orders, bdcs=bdcs, omcs=omcs)
 
 @orders_bp.route('/update/<order_id>', methods=['POST'])
 def update_order(order_id):
-    if 'role' not in session or session['role'] != 'admin':
+    if 'role' not in session or session.get('role') != 'admin':
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
     form = request.form
@@ -174,6 +188,8 @@ def update_order(order_id):
         "payment_type": (form.get("payment_type") or "").strip(),
         "payment_amount": form.get("payment_amount"),
         "shareholder": (form.get("shareholder") or "").strip(),
+        # Delivery inline amount (optional)
+        "delivery_amount": (form.get("delivery_amount") or "").strip(),
 
         # Optional: bank hints (no auto allocation here)
         "bank_id": (form.get("bank_id") or "").strip(),
@@ -208,9 +224,12 @@ def update_order(order_id):
         return jsonify({"success": False, "error": "Order not found"}), 404
 
     client_name = ""
+    client_phone = ""
     try:
         client = clients_collection.find_one({"_id": ObjectId(order.get("client_id"))})
-        client_name = client.get("name", "") if client else ""
+        if client:
+            client_name  = client.get("name", "") or ""
+            client_phone = client.get("phone") or client.get("phone_number") or client.get("mobile") or ""
     except Exception:
         client = None
 
@@ -281,7 +300,11 @@ def update_order(order_id):
     # Due date
     if fields["due_date"]:
         try:
-            update_data["due_date"] = datetime.strptime(fields["due_date"], "%Y-%m-%d")
+            dd = datetime.strptime(fields["due_date"], "%Y-%m-%d")
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            if dd < today:
+                return jsonify({"success": False, "error": "Due date cannot be in the past."}), 400
+            update_data["due_date"] = dd
         except ValueError:
             return jsonify({"success": False, "error": "Invalid date format"}), 400
     else:
@@ -321,8 +344,43 @@ def update_order(order_id):
     orders_collection.update_one({"_id": ObjectId(order_id)}, {"$set": update_data})
 
     # ---------------------------
+    # Upsert truck_orders details (delivery info + amounts)
+    # ---------------------------
+    order_oid_str = str(order["_id"])
+    # optional inline amount from header
+    try:
+        delivery_amount = float(fields["delivery_amount"]) if fields["delivery_amount"] else None
+    except ValueError:
+        delivery_amount = None
+
+    truck_upsert_key = {"order_ref": order_oid_str}
+    truck_set_on_insert = {
+        "created_at": datetime.utcnow(),
+        "order_id": order.get("order_id") or human_id,  # human code if present
+    }
+    effective_total = delivery_amount if isinstance(delivery_amount, (int, float)) else total_debt
+    truck_set = {
+        "truck_id":     order.get("truck_id"),
+        "truck_number": order.get("vehicle_number"),
+        "driver_name":  order.get("driver_name"),
+        "driver_phone": order.get("driver_phone"),
+        "client_id":    order.get("client_id"),
+        "client_name":  client_name or "—",
+        "client_phone": client_phone or "",
+        "destination":  order.get("region") or order.get("destination") or "",
+        "total_debt":   round(effective_total, 2),
+        "delivery_amount": round(delivery_amount, 2) if isinstance(delivery_amount, (int, float)) else None,
+        "status": "pending",
+        "updated_at": datetime.utcnow(),
+    }
+    truck_orders_collection.update_one(
+        truck_upsert_key,
+        {"$setOnInsert": truck_set_on_insert, "$set": truck_set},
+        upsert=True
+    )
+
+    # ---------------------------
     # Create/Update BDC payable idempotently (ONLY on first approval)
-    # with strong dedupe & unique constraint handling
     # ---------------------------
     if is_first_approval:
         # BDC payable (only for s_bdc/combo with a payment type)
@@ -408,6 +466,35 @@ def update_order(order_id):
         resp["invoice_url"] = url_for("orders.order_invoice", order_id=order_id)
         resp["order_id"] = human_id
     return jsonify(resp)
+
+# ---- DECLINE ORDER ----
+@orders_bp.route('/decline/<order_id>', methods=['POST'])
+def decline_order(order_id):
+    if 'role' not in session or session.get('role') != 'admin':
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid order id"}), 400
+
+    order = orders_collection.find_one({"_id": oid})
+    if not order:
+        return jsonify({"success": False, "error": "Order not found"}), 404
+
+    # set order declined
+    orders_collection.update_one(
+        {"_id": oid},
+        {"$set": {"status": "declined", "declined_at": datetime.utcnow(), "delivery_status": "cancelled"}}
+    )
+
+    # cancel linked truck_order if exists
+    truck_orders_collection.update_one(
+        {"order_ref": str(oid)},
+        {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}},
+        upsert=False
+    )
+
+    return jsonify({"success": True, "message": "Order declined.", "declined": True})
 
 @orders_bp.route('/get_product_price', methods=['GET'])
 def get_product_price():
