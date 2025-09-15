@@ -285,7 +285,7 @@ def update_approved_order(order_id):
                 # Try to reassign to the new bdc_id; handle unique key collisions by merging.
                 already = s_bdc_payment_collection.find_one({"order_oid": oid, "bdc_id": new_bdc_id})
                 if already:
-                    # Merge: prefer recalculated amount (if provided), keep/append histories, then drop old one
+                    # Merge
                     set_updates = {
                         "updated_at": datetime.utcnow(),
                         "shareholder": shareholder,
@@ -308,7 +308,6 @@ def update_approved_order(order_id):
                     merged_hist = new_hist + old_hist if old_hist else new_hist
                     if merged_hist:
                         set_updates["bank_paid_history"] = merged_hist
-                        # Try to keep totals/last_at sensible if present
                         set_updates["bank_paid_total"] = (
                             (already.get("bank_paid_total") or 0.0) + (old_doc.get("bank_paid_total") or 0.0)
                         )
@@ -462,4 +461,66 @@ def update_approved_order(order_id):
         "message": "Order and related payment records updated.",
         "approved": True,
         "order_id": human_order_id(order)
+    })
+
+# ----------- cancel handler (deletes BDC/OMC payments, zeros totals, updates status) -----------
+@approved_orders_bp.route('/approved_orders/cancel/<order_id>', methods=['POST'])
+def cancel_approved_order(order_id):
+    """
+    Cancel an approved order:
+      - Delete s_bdc_payment and omc_payment documents for this order
+      - Update the order:
+          status = "cancled"  (or "cancled – <reason>" if provided)
+          delivery_status = "canceled"
+          returns, returns_total, returns_sbdc, returns_stax = 0.0
+          total_debt = 0.0
+          updated_at, canceled_at = now
+    """
+    if 'role' not in session or session['role'] != 'admin':
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    # Accept reason from form or JSON; allow blank
+    reason = ""
+    if request.is_json:
+        reason = (request.json.get('reason') or "").strip()
+    else:
+        reason = (request.form.get('reason') or "").strip()
+
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid order id"}), 400
+
+    order = orders_collection.find_one({"_id": oid})
+    if not order:
+        return jsonify({"success": False, "error": "Order not found"}), 404
+
+    # Delete related payment docs
+    s_bdc_payment_collection.delete_many({"order_oid": oid})
+    omc_payment_collection.delete_many({"order_oid": oid})
+
+    # Build status text (keep spelling "cancled" per your requirement)
+    status_text = f"cancled – {reason}" if reason else "cancled"
+
+    now = datetime.utcnow()
+    update_doc = {
+        "status": status_text,
+        "delivery_status": "canceled",
+        "returns": 0.0,
+        "returns_total": 0.0,
+        "returns_sbdc": 0.0,
+        "returns_stax": 0.0,
+        "total_debt": 0.0,
+        "updated_at": now,
+        "canceled_at": now,
+        "canceled_reason": reason,  # optional field for audits
+    }
+
+    orders_collection.update_one({"_id": oid}, {"$set": update_doc})
+
+    return jsonify({
+        "success": True,
+        "message": "Order canceled. Related BDC/OMC payment records removed and totals reset to 0.",
+        "order_id": human_order_id(order),
+        "status": status_text
     })
