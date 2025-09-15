@@ -29,6 +29,8 @@ from order_cancellation import cancel_bp
 from navbar import navbar_bp
 from users import users_bp
 from taxes import taxes_bp
+from prices_bp import prices_bp
+
 
 
 # === Admin Features ===
@@ -109,6 +111,8 @@ app.register_blueprint(client_dashboard_bp, url_prefix="/client")
 app.register_blueprint(client_order_bp, url_prefix="/client")
 app.register_blueprint(client_order_history_bp, url_prefix="/client")
 app.register_blueprint(client_payment_bp, url_prefix="/client")
+app.register_blueprint(prices_bp)
+
 
 # === Login shortcuts (optional) ===
 @app.route("/login")
