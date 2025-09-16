@@ -10,7 +10,7 @@ register_client_bp = Blueprint('register_client', __name__, template_folder='tem
 clients_collection      = db.clients
 invite_links_collection = db.invite_links  # collection for expiring links
 
-ARKESEL_API_KEY = "c1JKV21keG1DdnJZQW1zc2JpVks"
+ARKESEL_API_KEY = "c1JKV21keG1DdnJZQW1zc2ks"
 DEFAULT_IMAGE_URL = "https://cdn-icons-png.flaticon.com/256/3135/3135715.png"
 
 # ------------- Time helpers (normalize to UTC naive) -------------
@@ -255,3 +255,4 @@ def _perform_registration(created_by: dict):
 
     flash(success_msg, 'success')
     return redirect(request.path)
+
