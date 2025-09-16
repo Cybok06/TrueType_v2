@@ -15,7 +15,7 @@ bank_accounts_col   = db["bank_accounts"]
 clients_col         = db["clients"]  # <-- for client details
 
 # ───────────────────────── Config ─────────────────────────
-ARKESEL_API_KEY = os.getenv("ARKESEL_API_KEY", "c1JKV21keG1DdnJZQW1zc2JpVks")
+ARKESEL_API_KEY = os.getenv("ARKESEL_API_KEY", "c1JKV21kDdnJZQW1zc2JpVks")
 ADMIN_NOTIFY_MSISDN = "0277336609"  # destination for notifications
 DUP_CONFIRM_TTL_MIN = 10            # user can confirm by re-submitting within this window
 
@@ -362,3 +362,4 @@ def client_payment():
         order_balance_map=order_balance_map,
         bank_accounts=bank_accounts
     )
+
