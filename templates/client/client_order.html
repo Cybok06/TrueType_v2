@@ -125,7 +125,7 @@
           <select class="form-select" name="quantity" id="quantity" required>
             <option value="">Select Quantity</option>
             <option value="7500">7,500</option>
-            <option value="7500">9,000</option>
+            <option value="9000">9,000</option>
             <option value="13500">13,500</option>
             <option value="18000">18,000</option>
             <option value="27000">27,000</option>
@@ -139,11 +139,13 @@
         <!-- Hire Truck (admin pool, optional) -->
         <div class="col-md-12">
           <label class="form-label">Hire Truck (Optional)</label>
-          <select class="form-select" id="truck_selector">
+          <!-- IMPORTANT: name="truck_id" so backend knows a hire truck was chosen -->
+          <select class="form-select" id="truck_selector" name="truck_id">
             <option value="">-- Select Available Truck (Optional) --</option>
             {% for truck in trucks %}
               <option
-                value="{{ truck.truck_number }}"
+                value="{{ truck._id }}"                       <!-- posts _id -->
+                data-number="{{ truck.truck_number }}"         <!-- for autofill -->
                 data-driver="{{ truck.driver_name }}"
                 data-phone="{{ truck.driver_phone }}"
                 data-capacity="{{ truck.capacity }}"
@@ -152,7 +154,7 @@
               </option>
             {% endfor %}
           </select>
-          <small class="text-muted">You may also enter truck details manually below.</small>
+          <small class="text-muted">If you don’t pick a truck here, no truck order will be created.</small>
         </div>
 
         <!-- Recent Trucks (per client) -->
@@ -243,15 +245,18 @@
   truckSel.addEventListener('change', function(){
     const opt = this.options[this.selectedIndex];
     if (!opt || !opt.value){
+      // Cleared hire truck selection
       vehicleEl.value = '';
       driverEl.value  = '';
       phoneEl.value   = '';
+      // don't touch region, user may have typed it already
       qtySel.value    = '';
       const prior = qtySel.querySelector('option[data-dyn="1"]');
       if (prior) prior.remove();
       return;
     }
-    vehicleEl.value = opt.value || '';
+    // NOTE: value is the truck _id (posted as truck_id). Use data-* for autofill
+    vehicleEl.value = opt.getAttribute('data-number') || '';
     driverEl.value  = opt.getAttribute('data-driver') || '';
     phoneEl.value   = opt.getAttribute('data-phone')  || '';
     const cap = parseCapacity(opt.getAttribute('data-capacity'));
@@ -586,5 +591,3 @@
 
 </body>
 </html>
-
-
