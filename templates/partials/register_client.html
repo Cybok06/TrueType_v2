@@ -38,6 +38,9 @@
     /* Share banner for public links */
     #publicBanner { background: rgba(255,255,255,.9); border-left:5px solid #0ea5e9; }
     .form-text.format { font-size:.825rem; color:#64748b; }
+
+    /* Agreement line spacing */
+    .agreement-row { border-top: 1px dashed #e5e7eb; padding-top: .75rem; margin-top: .25rem; }
   </style>
 </head>
 <body>
@@ -184,8 +187,20 @@
       <img id="preview_image" src="" class="d-none mt-2 rounded border" style="max-width: 120px;">
     </div>
 
-    <div class="col-12 mt-3">
-      <button id="submitBtn" type="submit" class="btn btn-primary w-100">
+    <!-- ✅ Data Privacy Agreement -->
+    <div class="col-12 agreement-row">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="1" id="agree_privacy" required>
+        <label class="form-check-label" for="agree_privacy">
+          I have read and agree to the
+          <a href="#" data-bs-toggle="modal" data-bs-target="#privacyModal">Data Privacy Agreement</a>.
+        </label>
+        <div class="invalid-feedback">You must agree to the Data Privacy Agreement before registering.</div>
+      </div>
+    </div>
+
+    <div class="col-12 mt-2">
+      <button id="submitBtn" type="submit" class="btn btn-primary w-100" disabled>
         <span class="btn-text"><i class="bi bi-person-check"></i> Register Client</span>
         <span class="spinner-border spinner-border-sm align-middle ms-2 d-none" role="status" aria-hidden="true"></span>
       </button>
@@ -213,6 +228,48 @@
           <strong>Phone:</strong> <span id="clientPhone" class="text-primary"></span>
           <button class="btn btn-sm btn-outline-secondary ms-2" onclick="copyToClipboard('clientPhone')">Copy</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 📜 Data Privacy Agreement Modal -->
+<div class="modal fade" id="privacyModal" tabindex="-1" aria-labelledby="privacyModalLabel">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="privacyModalLabel"><i class="bi bi-shield-lock me-2"></i>Data Privacy Agreement</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          <strong>Purpose.</strong> We collect and process your personal data to create and manage your account,
+          deliver our services, communicate with you, verify identity, prevent fraud, and comply with applicable laws.
+        </p>
+        <p class="mb-2">
+          <strong>Data Collected.</strong> Typical data includes your name, contact details, location, ID type/number,
+          address, next-of-kin details, and any profile image you provide.
+        </p>
+        <p class="mb-2">
+          <strong>Sharing.</strong> We may share data with trusted processors (e.g., cloud hosting, communications,
+          payment or identity verification providers) under contracts that protect your information. We do not sell your data.
+        </p>
+        <p class="mb-2">
+          <strong>Security & Retention.</strong> We use reasonable technical and organizational measures to protect your data
+          and retain it only as long as necessary for the purposes described or as required by law.
+        </p>
+        <p class="mb-2">
+          <strong>Your Rights.</strong> Subject to law, you may request access, correction, deletion, restriction,
+          portability, or withdraw consent at any time. You may also lodge a complaint with the relevant authority.
+        </p>
+        <p class="mb-0 text-muted">
+          This notice aligns with applicable data protection laws, including Ghana’s Data Protection Act, 2012 (Act 843).
+          For questions or requests, contact our support team.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-success" data-bs-dismiss="modal">I Understand</button>
       </div>
     </div>
   </div>
@@ -302,7 +359,7 @@
       status.textContent = "❌ Upload failed. Network error.";
     } finally {
       isUploadingImage = false;
-      toggleSubmit(true);
+      updateAgreementState(); // re-evaluate button state
     }
   });
 
@@ -356,9 +413,34 @@
   idTypeEl.addEventListener('change', applyIdPattern);
   applyIdPattern();
 
+  // ===== Agreement checkbox → enable/disable Register button =====
+  const agreeEl = document.getElementById('agree_privacy');
+  const submitBtn = document.getElementById('submitBtn');
+
+  function updateAgreementState() {
+    // Only enable when image upload (if any) is done AND checkbox is ticked
+    const canEnable = agreeEl.checked && !isUploadingImage;
+    submitBtn.disabled = !canEnable;
+    if (!canEnable) {
+      // ensure spinner not shown when simply disabled due to agreement
+      submitBtn.querySelector('.spinner-border').classList.add('d-none');
+    }
+  }
+  agreeEl.addEventListener('change', updateAgreementState);
+  updateAgreementState();
+
   // ===== Submit Handler with Spinner & Overlay =====
   $('#registerForm').on('submit', function (e) {
     e.preventDefault();
+
+    if (!agreeEl.checked) {
+      agreeEl.setCustomValidity('Please agree to the Data Privacy Agreement.');
+      this.classList.add('was-validated');
+      this.reportValidity();
+      return;
+    } else {
+      agreeEl.setCustomValidity('');
+    }
 
     if (isUploadingImage) {
       $('#flash-message').text('Please wait for the image upload to finish.')
@@ -417,6 +499,10 @@
         $('#preview_image').addClass('d-none');
         applyIdPattern();
 
+        // Reset agreement state after successful submit
+        agreeEl.checked = false;
+        updateAgreementState();
+
         $('#clientID').text(res.client_id || '');
         $('#clientPhone').text(res.phone || formData.phone || '');
 
@@ -429,7 +515,7 @@
           .removeClass('d-none alert-success alert-warning').addClass('alert-danger');
       },
       complete: function () {
-        hideOverlay(); disableFormFields(false); toggleSubmit(true);
+        hideOverlay(); disableFormFields(false); updateAgreementState();
       }
     });
   });
