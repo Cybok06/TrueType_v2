@@ -12,7 +12,7 @@ prices_bp = Blueprint("prices_bp", __name__, template_folder="templates")
 # --- Collections ---
 bdc_collection            = db["bdc"]                   # existing: { _id, name, rep_phone? }
 bdc_prices_collection     = db["bdc_prices"]            # price history (logs)
-bdc_current_prices        = db["bdc_current_prices"]    # NEW: one doc per (bdc_id, product) = current price
+bdc_current_prices        = db["bdc_current_prices"]    # one doc per (bdc_id, product) = current price
 bdc_share_tokens          = db["bdc_share_tokens"]      # shareable links for posting
 
 # --- Indexes (safe to re-run on startup) ---
@@ -29,10 +29,14 @@ def _ensure_indexes():
             unique=True,
             name="uniq_current_bdc_product"
         )
+        # for high/low lists
         bdc_current_prices.create_index(
             [("product", 1), ("price", -1)],
             name="by_product_price_desc"
         )
+        # OPTIONAL quality-of-life: if you later query by location server-side
+        # bdc_current_prices.create_index([("product", 1), ("location", 1)], name="by_product_location")
+
         # share tokens
         bdc_share_tokens.create_index("token", unique=True, name="uniq_token")
         bdc_share_tokens.create_index([("bdc_id", 1), ("active", 1)], name="by_bdc_active")
@@ -65,6 +69,13 @@ def _pct_change(new_val, old_val):
         return round(((float(new_val) - float(old_val)) / float(old_val)) * 100.0, 4)
     except Exception:
         return None
+
+def _clean_text(s: str, limit: int = 180):
+    """Trim, collapse whitespace, and cap length; return None if empty after cleaning."""
+    if not s:
+        return None
+    s = " ".join(str(s).split())[:limit].strip()
+    return s or None
 
 # ---------- Pages ----------
 @prices_bp.get("/prices")
@@ -134,7 +145,7 @@ def prices_share_link():
         })
 
     share_url = url_for("prices_bp.price_post_page", token=token, _external=True)
-    msg = f"Hello, please post your latest PMS/AGO price here: {share_url}"
+    msg = f"Hello, please post your latest PMS/AGO price here (include your location & note): {share_url}"
     wa_url = "https://wa.me/?text=" + quote(msg, safe="")
 
     return jsonify({
@@ -175,6 +186,12 @@ def price_post_submit():
     except Exception:
         price = None
 
+    # NEW: optional fields
+    raw_location = request.form.get("location")
+    raw_desc = request.form.get("description")
+    location = _clean_text(raw_location, limit=120)      # e.g., "Tema Depot", "Takoradi"
+    description = _clean_text(raw_desc, limit=300)       # short note
+
     if not token:
         return jsonify({"ok": False, "error": "Missing token"}), 400
     if product not in PRODUCTS:
@@ -197,7 +214,10 @@ def price_post_submit():
         "price": round(price, 4),
         "created_at": now,
         "source_ip": request.headers.get("X-Forwarded-For") or request.remote_addr,
-        "user_agent": request.headers.get("User-Agent")
+        "user_agent": request.headers.get("User-Agent"),
+        # NEW: store context on each log
+        "location": location,
+        "description": description,
     }
     bdc_prices_collection.insert_one(doc)
 
@@ -207,6 +227,7 @@ def price_post_submit():
     change_abs = round(price - prev_price, 4) if prev_price is not None else None
     change_pct = _pct_change(price, prev_price)
 
+    # Keep latest location/description at "current" level for quick display/filtering
     bdc_current_prices.update_one(
         {"bdc_id": t["bdc_id"], "product": product},
         {"$set": {
@@ -217,14 +238,22 @@ def price_post_submit():
             "prev_price": prev_price,
             "change_abs": change_abs,
             "change_pct": change_pct,
+            "location": location,
+            "description": description,
         }},
         upsert=True
     )
 
     bdc_share_tokens.update_one({"_id": t["_id"]}, {"$set": {"last_used_at": now}})
 
-    # FIXED: removed extra '}' and ')'
-    return jsonify({"ok": True, "message": "Price submitted", "product": product, "price": round(price, 4)})
+    return jsonify({
+        "ok": True,
+        "message": "Price submitted",
+        "product": product,
+        "price": round(price, 4),
+        "location": location,
+        "description": description
+    })
 
 # ---------- APIs for the board (FAST + FILTERED + RECENT3/CHANGE) ----------
 
@@ -249,10 +278,10 @@ def api_board_data():
             _id, name,
             prices: {
               PMS: {
-                current: { price, time },
+                current: { price, time, location?, description? },
                 recent3: [ {price,time}, ... up to 3 ],
-                change: { abs, pct, dir },  # dir in { "up","down","flat","na" }
-                series: [{t,y}, ...]        # chronological for charts
+                change: { abs, pct, dir },
+                series: [{t,y}, ...]
               },
               AGO: { ... }
             }
@@ -285,7 +314,12 @@ def api_board_data():
     # -------- CURRENT (only BDCs that have a current record for selected products) --------
     cur_docs = list(bdc_current_prices.find(
         {"product": {"$in": prods}},
-        {"bdc_id": 1, "product": 1, "price": 1, "updated_at": 1, "change_abs": 1, "change_pct": 1}
+        {
+            "bdc_id": 1, "product": 1, "price": 1, "updated_at": 1,
+            "change_abs": 1, "change_pct": 1,
+            # NEW
+            "location": 1, "description": 1
+        }
     ))
 
     if not cur_docs:
@@ -299,6 +333,9 @@ def api_board_data():
             "time": _iso_z(d.get("updated_at")),
             "change_abs": d.get("change_abs", None),
             "change_pct": d.get("change_pct", None),
+            # NEW
+            "location": d.get("location"),
+            "description": d.get("description"),
         }
         for d in cur_docs
     }
@@ -315,7 +352,7 @@ def api_board_data():
             "_id": {"bdc_id": "$bdc_id", "product": "$product"},
             "points": {"$push": {"t": "$created_at", "y": "$price"}}
         }},
-        {"$project": {"points": {"$slice": ["$points", max(limit, 4)]}}}  # always keep at least 4 for recent3+current
+        {"$project": {"points": {"$slice": ["$points", max(limit, 4)]}}}  # keep at least 4 for recent3+current
     ]
     series_rows = list(bdc_prices_collection.aggregate(series_pipe))
 
@@ -376,7 +413,13 @@ def api_board_data():
                 dir_flag = "flat"
 
             row["prices"][prod] = {
-                "current": {"price": current_point["y"], "time": current_point["t"]},
+                "current": {
+                    "price": current_point["y"],
+                    "time": current_point["t"],
+                    # NEW (flow to UI)
+                    "location": cur_payload.get("location"),
+                    "description": cur_payload.get("description"),
+                },
                 "recent3": [{"price": p["y"], "time": p["t"]} for p in recent3],
                 "change": {"abs": change_abs, "pct": change_pct, "dir": dir_flag},
                 "series": pts  # full chronological for charts (up to 'limit')
@@ -415,11 +458,11 @@ def api_board_data():
 def api_latest():
     """
     Return current price per BDC per product, ONLY for BDCs that have posted.
-    Output: { bdcs: [{ _id, name, prices: { PMS: {price, time}, AGO: {..} } }] }
+    Output: { bdcs: [{ _id, name, prices: { PMS: {price, time, location?, description?}, AGO: {..} } }] }
     """
     cur_docs = list(bdc_current_prices.find(
         {"product": {"$in": PRODUCTS}},
-        {"bdc_id": 1, "product": 1, "price": 1, "updated_at": 1}
+        {"bdc_id": 1, "product": 1, "price": 1, "updated_at": 1, "location": 1, "description": 1}
     ))
     if not cur_docs:
         return jsonify({"ok": True, "bdcs": []})
@@ -427,7 +470,9 @@ def api_latest():
     bdc_ids = sorted(list({d["bdc_id"] for d in cur_docs}))
     current_map = {(d["bdc_id"], d["product"]): {
         "price": float(d.get("price", 0.0)),
-        "time": _iso_z(d.get("updated_at"))
+        "time": _iso_z(d.get("updated_at")),
+        "location": d.get("location"),
+        "description": d.get("description"),
     } for d in cur_docs}
 
     bdc_docs = list(bdc_collection.find({"_id": {"$in": bdc_ids}}, {"name": 1}))
