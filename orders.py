@@ -17,10 +17,6 @@ truck_orders_collection  = db['truck_orders']     # 🚚 delivery/dispatch
 
 # ------------ harden uniqueness for BDC payments ------------
 def _ensure_unique_index():
-    """
-    Try to enforce 1 doc per (order_oid, bdc_id).
-    If duplicates exist now, index creation may fail; runtime dedupe still protects.
-    """
     try:
         s_bdc_payment_collection.create_index(
             [('order_oid', 1), ('bdc_id', 1)],
@@ -28,16 +24,10 @@ def _ensure_unique_index():
             name='uniq_order_bdc'
         )
     except OperationFailure:
-        # Likely duplicates present or already unique in a different way — safe to ignore.
         pass
 _ensure_unique_index()
 
 def _dedupe_s_bdc_payments(order_oid: ObjectId, bdc_id: ObjectId):
-    """
-    Remove duplicate BDC payments for the same (order_oid, bdc_id),
-    keeping the most recent by created_at (fallback _id).
-    Returns the kept document (or None if none existed).
-    """
     cursor = s_bdc_payment_collection.find(
         {'order_oid': ObjectId(order_oid), 'bdc_id': ObjectId(bdc_id)}
     ).sort([('created_at', -1), ('_id', -1)])
@@ -54,18 +44,15 @@ def _dedupe_s_bdc_payments(order_oid: ObjectId, bdc_id: ObjectId):
 
 # --------------- helpers ---------------
 def _f(v):
-    """parse float or return None"""
     try:
         return float(v)
     except (TypeError, ValueError):
         return None
 
 def _nz(v):
-    """None -> 0.0 without changing real zeros"""
     return v if v is not None else 0.0
 
 def _as_dt(d):
-    """best effort to parse a date/datetime or return None"""
     if isinstance(d, datetime):
         return d
     if isinstance(d, date):
@@ -79,15 +66,10 @@ def _as_dt(d):
     return None
 
 def human_order_id(order) -> str:
-    """
-    Resolve your human-generated order id (not Mongo _id).
-    Tries common keys; otherwise creates a safe fallback.
-    """
     for k in ("order_id", "order_no", "order_code", "order_number", "order_ref", "public_id"):
         v = order.get(k)
         if v:
             return str(v)
-    # Fallback: ORD-YYMMDD-XXXXXX (last 6 of ObjectId)
     created = _as_dt(order.get("date")) or datetime.utcnow()
     ts = created.strftime("%y%m%d")
     tail = str(order.get("_id"))[-6:].upper()
@@ -102,16 +84,10 @@ def view_orders():
 
     orders = list(orders_collection.find({'status': 'pending'}).sort('date', -1))
 
-    # BDCs with contact fields
-    bdcs = list(
-        bdc_collection.find({}, {'name': 1, 'rep_phone': 1, 'phone': 1}).sort('name', 1)
-    )
-
-    # OMCs with contact fields
+    bdcs = list(bdc_collection.find({}, {'name': 1, 'rep_phone': 1, 'phone': 1}).sort('name', 1))
     omcs = list(omc_collection.find({}, {'name': 1, 'rep_phone': 1}).sort('name', 1))
 
     for order in orders:
-        # client could be stored as ObjectId or string
         try:
             client = clients_collection.find_one({'_id': ObjectId(order.get('client_id'))})
         except Exception:
@@ -120,7 +96,6 @@ def view_orders():
         if client:
             order['client_name'] = client.get('name', 'No Name')
             order['client_image_url'] = client.get('image_url', '')
-            # keep original client_id; expose a separate display code if you have one
             order['client_code'] = client.get('client_id', '')
             order['client_profile_url'] = None
         else:
@@ -128,39 +103,35 @@ def view_orders():
             order['client_image_url'] = ''
             order['client_profile_url'] = None
 
-        # Server-side initial display (fallbacks)
         p     = _f(order.get('p_bdc_omc'))
         s     = _f(order.get('s_bdc_omc'))
         p_tax = _f(order.get('p_tax'))
         s_tax = _f(order.get('s_tax'))
         q     = _f(order.get('quantity')) or 0.0
 
-        # per-L margins (only if both sides available)
         margin_price = (s - p) if (s is not None and p is not None) else None
         margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-        # expose both margins for the UI
         order['margin']      = round(margin_price, 2) if margin_price is not None else None
         order['margin_tax']  = round(margin_tax, 2)   if margin_tax   is not None else None
 
-        # returns = Q × (sum of available margins)
         ret_price = (_nz(margin_price)) * q
         ret_tax   = (_nz(margin_tax)) * q
         ret_total = ret_price + ret_tax
 
-        # store per-part + total for initial render
-        order['returns_sbdc']  = round(ret_price, 2)   # price-margin × Q
-        order['returns_stax']  = round(ret_tax, 2)     # tax-margin × Q
+        order['returns_sbdc']  = round(ret_price, 2)
+        order['returns_stax']  = round(ret_tax, 2)
         order['returns_total'] = round(ret_total, 2)
-        order['returns']       = round(ret_total, 2)   # legacy alias
+        order['returns']       = round(ret_total, 2)
 
-        # ---- fetch/attach truck order (for delivery details + amount prefill) ----
+        # ---- attach truck order (only if exists = hired) ----
         try:
             truck_order = truck_orders_collection.find_one({"order_ref": str(order["_id"])}) \
                            or truck_orders_collection.find_one({"order_id": order.get("order_id")})
         except Exception:
             truck_order = None
 
+        order['has_truck_order'] = bool(truck_order)
         order['truck_number']     = order.get('vehicle_number') or (truck_order or {}).get('truck_number')
         order['driver_name']      = order.get('driver_name')    or (truck_order or {}).get('driver_name')
         order['driver_phone']     = order.get('driver_phone')   or (truck_order or {}).get('driver_phone')
@@ -174,11 +145,11 @@ def update_order(order_id):
         return jsonify({"success": False, "error": "Unauthorized"}), 403
 
     form = request.form
-    mode = (form.get("order_type") or "combo").strip().lower()  # 's_bdc' | 's_tax' | 'combo'
+    mode = (form.get("order_type") or "combo").strip().lower()
 
     fields = {
         "omc": form.get("omc"),
-        "bdc": form.get("bdc"),  # may be None when S-Tax
+        "bdc": form.get("bdc"),
         "depot": form.get("depot"),
         "p_bdc_omc": form.get("p_bdc_omc"),
         "s_bdc_omc": form.get("s_bdc_omc"),
@@ -188,17 +159,15 @@ def update_order(order_id):
         "payment_type": (form.get("payment_type") or "").strip(),
         "payment_amount": form.get("payment_amount"),
         "shareholder": (form.get("shareholder") or "").strip(),
-        # Delivery inline amount (optional)
+        # Delivery inline amount (only used if a truck_order already exists)
         "delivery_amount": (form.get("delivery_amount") or "").strip(),
 
-        # Optional: bank hints (no auto allocation here)
         "bank_id": (form.get("bank_id") or "").strip(),
         "bank_reference": (form.get("bank_reference") or "").strip(),
         "bank_paid_by": (form.get("bank_paid_by") or "").strip(),
-        "bank_payment_date": (form.get("bank_payment_date") or "").strip(),  # YYYY-MM-DD
+        "bank_payment_date": (form.get("bank_payment_date") or "").strip(),
     }
 
-    # ---------- REQUIRED FIELDS ----------
     if not fields["depot"]:
         return jsonify({"success": False, "error": "DEPOT is required."}), 400
 
@@ -211,11 +180,10 @@ def update_order(order_id):
     elif mode == "s_bdc":
         if not fields["bdc"]:
             return jsonify({"success": False, "error": "BDC is required for S-BDC order type."}), 400
-    else:  # combo
+    else:
         if not fields["omc"] or not fields["bdc"]:
             return jsonify({"success": False, "error": "OMC and BDC are required for Combo order type."}), 400
 
-    # Fetch order + client
     try:
         order = orders_collection.find_one({"_id": ObjectId(order_id)})
     except Exception:
@@ -233,10 +201,8 @@ def update_order(order_id):
     except Exception:
         client = None
 
-    # Stable human order id for postings (NOT the Mongo _id)
     human_id = human_order_id(order)
 
-    # Parse numeric inputs
     def _f_local(v):
         try: return float(v)
         except (TypeError, ValueError): return None
@@ -244,13 +210,12 @@ def update_order(order_id):
     def _nz_local(v):
         return v if v is not None else 0.0
 
-    p     = _f_local(fields["p_bdc_omc"])   # P-BDC
-    s     = _f_local(fields["s_bdc_omc"])   # S-BDC
-    p_tax = _f_local(fields["p_tax"])       # P-Tax
-    s_tax = _f_local(fields["s_tax"])       # S-Tax
+    p     = _f_local(fields["p_bdc_omc"])
+    s     = _f_local(fields["s_bdc_omc"])
+    p_tax = _f_local(fields["p_tax"])
+    s_tax = _f_local(fields["s_tax"])
     q     = _f_local(order.get("quantity")) or 0.0
 
-    # Validate by order type (per price/tax inputs)
     if mode == "s_bdc" and s is None:
         return jsonify({"success": False, "error": "S-BDC is required for S-BDC type."}), 400
     if mode == "s_tax" and s_tax is None:
@@ -258,26 +223,22 @@ def update_order(order_id):
     if mode == "combo" and (s is None or s_tax is None):
         return jsonify({"success": False, "error": "S-BDC and S-Tax are required for Combo type."}), 400
 
-    # per-L margins
     margin_price = (s - p) if (s is not None and p is not None) else None
     margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-    # total debt by order type
     if mode == "s_bdc":
         total_debt = _nz_local(s) * q
     elif mode == "s_tax":
         total_debt = _nz_local(s_tax) * q
-    else:  # combo
+    else:
         total_debt = (_nz_local(s) + _nz_local(s_tax)) * q
 
-    # RETURNS
     returns_price = _nz_local(margin_price) * q
     returns_tax   = _nz_local(margin_tax) * q
     returns_total = returns_price + returns_tax
 
-    # Build order update doc
     update_data = {
-        "omc": fields["omc"],                  # may be None/'' for s_bdc
+        "omc": fields["omc"],
         "depot": fields["depot"],
         "shareholder": fields["shareholder"] or None,
         "p_bdc_omc": p,
@@ -289,15 +250,14 @@ def update_order(order_id):
         "returns_sbdc": round(returns_price, 2),
         "returns_stax": round(returns_tax, 2),
         "returns_total": round(returns_total, 2),
-        "returns": round(returns_total, 2),  # legacy alias
+        "returns": round(returns_total, 2),
     }
     if margin_price is not None:
         update_data["margin_price"] = round(margin_price, 2)
-        update_data["margin"] = round(margin_price, 2)  # legacy alias
+        update_data["margin"] = round(margin_price, 2)
     if margin_tax is not None:
         update_data["margin_tax"] = round(margin_tax, 2)
 
-    # Due date
     if fields["due_date"]:
         try:
             dd = datetime.strptime(fields["due_date"], "%Y-%m-%d")
@@ -310,7 +270,6 @@ def update_order(order_id):
     else:
         update_data["due_date"] = None
 
-    # BDC lookup & set (when NOT S-Tax)
     bdc_id = None
     if mode != "s_tax":
         try:
@@ -325,7 +284,6 @@ def update_order(order_id):
         update_data["bdc_id"] = bdc_id
         update_data["bdc_name"] = bdc.get("name", "")
 
-    # Status flags
     complete_fields = (update_data.get("total_debt") is not None) and (
         (mode == "s_tax" and ("returns_total" in update_data or "margin_tax" in update_data)) or
         (mode in ("s_bdc", "combo") and ("returns_total" in update_data or "margin" in update_data))
@@ -334,71 +292,71 @@ def update_order(order_id):
     update_data["status"] = new_status
     update_data["delivery_status"] = "pending"
 
-    # Look at previous status to detect first approval
     prev = orders_collection.find_one({"_id": ObjectId(order_id)}, {"status": 1, "approved_at": 1})
     is_first_approval = (new_status == "approved" and (not prev or prev.get("status") != "approved"))
     if is_first_approval:
         update_data["approved_at"] = datetime.utcnow()
 
-    # Persist order fields first
     orders_collection.update_one({"_id": ObjectId(order_id)}, {"$set": update_data})
 
     # ---------------------------
-    # Upsert truck_orders details (delivery info + amounts)
+    # Truck order: ONLY update if it already exists (i.e., hired truck); no upsert/creation here.
     # ---------------------------
     order_oid_str = str(order["_id"])
-    # optional inline amount from header
+    existing_truck_order = (
+        truck_orders_collection.find_one({"order_ref": order_oid_str}) or
+        truck_orders_collection.find_one({"order_id": order.get("order_id") or human_id})
+    )
+
+    # parse delivery_amount safely
     try:
         delivery_amount = float(fields["delivery_amount"]) if fields["delivery_amount"] else None
     except ValueError:
         delivery_amount = None
 
-    truck_upsert_key = {"order_ref": order_oid_str}
-    truck_set_on_insert = {
-        "created_at": datetime.utcnow(),
-        "order_id": order.get("order_id") or human_id,  # human code if present
-    }
-    effective_total = delivery_amount if isinstance(delivery_amount, (int, float)) else total_debt
-    truck_set = {
-        "truck_id":     order.get("truck_id"),
-        "truck_number": order.get("vehicle_number"),
-        "driver_name":  order.get("driver_name"),
-        "driver_phone": order.get("driver_phone"),
-        "client_id":    order.get("client_id"),
-        "client_name":  client_name or "—",
-        "client_phone": client_phone or "",
-        "destination":  order.get("region") or order.get("destination") or "",
-        "total_debt":   round(effective_total, 2),
-        "delivery_amount": round(delivery_amount, 2) if isinstance(delivery_amount, (int, float)) else None,
-        "status": "pending",
-        "updated_at": datetime.utcnow(),
-    }
-    truck_orders_collection.update_one(
-        truck_upsert_key,
-        {"$setOnInsert": truck_set_on_insert, "$set": truck_set},
-        upsert=True
-    )
+    if existing_truck_order:
+        truck_set = {
+            "updated_at": datetime.utcnow(),
+            # keep identities as-is from order (do not overwrite with None)
+            "truck_id":     order.get("truck_id"),
+            "truck_number": order.get("vehicle_number"),
+            "driver_name":  order.get("driver_name"),
+            "driver_phone": order.get("driver_phone"),
+            "client_id":    order.get("client_id"),
+            "client_name":  client_name or "—",
+            "client_phone": client_phone or "",
+            "destination":  order.get("region") or order.get("destination") or "",
+            # keep total_debt for info; do not force delivery_amount if none was provided
+            "total_debt":   round(total_debt, 2),
+            "status": "pending",
+        }
+        if isinstance(delivery_amount, (int, float)):
+            truck_set["delivery_amount"] = round(delivery_amount, 2)
+
+        truck_orders_collection.update_one(
+            {"_id": existing_truck_order["_id"]},
+            {"$set": truck_set},
+            upsert=False
+        )
+    # else: do nothing — no hired truck for this order
 
     # ---------------------------
     # Create/Update BDC payable idempotently (ONLY on first approval)
     # ---------------------------
     if is_first_approval:
-        # BDC payable (only for s_bdc/combo with a payment type)
         payment_type_norm = (fields["payment_type"] or "").strip().lower()
         if mode != "s_tax" and payment_type_norm in ("cash", "from account", "credit"):
             if p is None:
                 return jsonify({"success": False, "error": "P-BDC is required to compute payment amount"}), 400
 
             calc_amount = round(q * p, 2)
-
-            # Natural key: one payable per order + BDC
             s_bdc_key = {"order_oid": ObjectId(order_id), "bdc_id": bdc_id}
             s_bdc_doc_setoninsert = {
                 "order_id": human_id,
                 "created_at": datetime.utcnow(),
             }
             s_bdc_doc_set = {
-                "payment_type": fields["payment_type"],  # keep original case
+                "payment_type": fields["payment_type"],
                 "amount": calc_amount,
                 "client_name": client_name or "—",
                 "product": order.get("product", ""),
@@ -413,10 +371,7 @@ def update_order(order_id):
                 "updated_at": datetime.utcnow(),
             }
 
-            # PRE-DUPE: clean any historical duplicates first
             _dedupe_s_bdc_payments(ObjectId(order_id), bdc_id)
-
-            # Try upsert; if race/dup happens, dedupe and retry once
             try:
                 s_bdc_payment_collection.update_one(
                     s_bdc_key,
@@ -431,7 +386,6 @@ def update_order(order_id):
                     upsert=True,
                 )
 
-        # OMC returns (only if there is an OMC and positive returns)
         if returns_total and returns_total > 0 and fields["omc"]:
             omc_key = {"order_oid": ObjectId(order_id), "omc_name": fields["omc"]}
             omc_doc_setoninsert = {
@@ -467,7 +421,6 @@ def update_order(order_id):
         resp["order_id"] = human_id
     return jsonify(resp)
 
-# ---- DECLINE ORDER ----
 @orders_bp.route('/decline/<order_id>', methods=['POST'])
 def decline_order(order_id):
     if 'role' not in session or session.get('role') != 'admin':
@@ -481,13 +434,11 @@ def decline_order(order_id):
     if not order:
         return jsonify({"success": False, "error": "Order not found"}), 404
 
-    # set order declined
     orders_collection.update_one(
         {"_id": oid},
         {"$set": {"status": "declined", "declined_at": datetime.utcnow(), "delivery_status": "cancelled"}}
     )
 
-    # cancel linked truck_order if exists
     truck_orders_collection.update_one(
         {"order_ref": str(oid)},
         {"$set": {"status": "cancelled", "updated_at": datetime.utcnow()}},
@@ -517,7 +468,6 @@ def get_product_price():
         's_tax':   product.get('s_tax', 0),
     })
 
-# --------------- invoice page ---------------
 @orders_bp.route('/invoice/<order_id>', methods=['GET'])
 def order_invoice(order_id):
     try:
@@ -539,7 +489,6 @@ def order_invoice(order_id):
         except Exception:
             client = clients_collection.find_one({"client_id": str(cid)})
 
-    # Optional receipt ref if present (kept for compatibility; may be empty now)
     receipt_ref = None
     p_details = (order.get("payment_details") or [])
     if p_details:
