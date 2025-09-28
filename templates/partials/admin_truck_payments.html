@@ -33,37 +33,37 @@
   <div class="col-md-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Total Orders</h6>
-      <h5 class="text-dark">{{ total_orders }}</h5>
+      <h5 class="text-dark">{{ "{:,}".format(total_orders) }}</h5>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Total Debt</h6>
-      <h5 class="text-danger">GHS {{ '%.2f'|format(total_debt) }}</h5>
+      <h5 class="text-danger">GHS {{ "{:,.2f}".format(total_debt) }}</h5>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Total Paid</h6>
-      <h5 class="text-success">GHS {{ '%.2f'|format(total_paid) }}</h5>
+      <h5 class="text-success">GHS {{ "{:,.2f}".format(total_paid) }}</h5>
     </div>
   </div>
   <div class="col-md-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Collection Efficiency</h6>
-      <h5 class="text-primary">{{ collection_efficiency }}%</h5>
+      <h5 class="text-primary">{{ "{:,.2f}".format(collection_efficiency) }}%</h5>
     </div>
   </div>
   <div class="col-md-3 mt-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Total Expense</h6>
-      <h5 class="text-secondary">GHS {{ '%.2f'|format(total_expense) }}</h5>
+      <h5 class="text-secondary">GHS {{ "{:,.2f}".format(total_expense) }}</h5>
     </div>
   </div>
   <div class="col-md-3 mt-3">
     <div class="card shadow-sm text-center p-3">
       <h6 class="text-muted">Settled Amount</h6>
-      <h5 class="text-dark">GHS {{ '%.2f'|format(total_settled) }}</h5>
+      <h5 class="text-dark">GHS {{ "{:,.2f}".format(total_settled) }}</h5>
     </div>
   </div>
 </div>
@@ -94,7 +94,7 @@
           <td>
             {{ p.bank_name }}<br><small>(xxx{{ p.account_last4 }})</small>
           </td>
-          <td class="text-primary fw-bold">{{ "%.2f"|format(p.amount) }}</td>
+          <td class="text-primary fw-bold">{{ "{:,.2f}".format(p.amount) }}</td>
           <td>
             <a href="{{ p.proof_url }}" target="_blank">
               <img src="{{ p.proof_url }}" width="60" class="img-thumbnail">
@@ -108,10 +108,10 @@
             {% endif %}
           </td>
           <td class="text-start">
-  <div><span class="text-secondary small">Debt:</span> <strong class="text-dark">GHS {{ "%.2f"|format(p.total_debt) }}</strong></div>
-  <div><span class="text-secondary small">Paid:</span> <strong class="text-success">GHS {{ "%.2f"|format(p.total_paid) }}</strong></div>
-  <div><span class="text-secondary small">Left:</span> <strong class="text-danger">GHS {{ "%.2f"|format(p.amount_left) }}</strong></div>
-</td>
+            <div><span class="text-secondary small">Debt:</span> <strong class="text-dark">GHS {{ "{:,.2f}".format(p.total_debt) }}</strong></div>
+            <div><span class="text-secondary small">Paid:</span> <strong class="text-success">GHS {{ "{:,.2f}".format(p.total_paid) }}</strong></div>
+            <div><span class="text-secondary small">Left:</span> <strong class="text-danger">GHS {{ "{:,.2f}".format(p.amount_left) }}</strong></div>
+          </td>
 
           <td>{{ p.formatted_date }}</td>
           <td>
