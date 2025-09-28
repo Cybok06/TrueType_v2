@@ -13,6 +13,33 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<style>
+  /* existing ... */
+
+  /* left chunk can shrink, text ellipses */
+  .order-header .header-left { min-width: 0; }
+  .order-header .client-summary {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* group on the right (BVR + badge + buttons) */
+  .order-header .header-actions { gap: .5rem; }
+
+  /* On mobile: allow wrapping; put actions on their own line, left aligned */
+  @media (max-width: 575.98px){
+    .order-header { flex-wrap: wrap; }
+    .order-header .header-actions { width: 100%; justify-content: flex-start; }
+    /* override earlier mobile rule that forced full-width buttons in headers */
+    .card-header .btn { width: auto; }
+    /* make header buttons compact on small screens */
+    .order-header .btn { padding: .25rem .5rem; }
+  }
+
+  /* On md+ keep everything strictly one line */
+  @media (min-width: 576px){
+    .order-header { flex-wrap: nowrap; }
+  }
+</style>
 
   <style>
     .card-header small { color:#6c757d; }
@@ -54,6 +81,12 @@
       flex-direction: column;
     }
     .spinner-overlay.d-none { display: none !important; }
+
+    /* one-line header with safe truncation */
+    .order-header .header-left { min-width: 0; }
+    .order-header .client-summary {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
   </style>
 </head>
 
@@ -108,29 +141,39 @@
     {% set filled = order.total_debt and order.returns %}
 
     <div class="card mb-4 shadow-sm">
-      <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center flex-wrap gap-2">
-          <a class="d-inline-flex align-items-center text-decoration-none" href="javascript:void(0)">
+      <div class="card-header bg-light">
+        <div class="order-header d-flex align-items-center gap-2">
+          <!-- LEFT: avatar + client/product/qty/date (truncates if needed) -->
+          <div class="d-flex align-items-center gap-2 header-left flex-grow-1 me-2">
             {% if order.client_image_url %}
-              <img src="{{ order.client_image_url }}" alt="Client Image" class="rounded-circle me-2" width="32" height="32">
+              <img src="{{ order.client_image_url }}" alt="Client Image" class="rounded-circle" width="32" height="32">
             {% else %}
-              <div class="rounded-circle bg-secondary me-2" style="width:32px; height:32px;"></div>
+              <div class="rounded-circle bg-secondary" style="width:32px; height:32px;"></div>
             {% endif %}
-            <strong>{{ order.client_name or 'Client' }} ({{ order.client_id }})</strong>
-          </a>
-          {% set date_str = (order.date|string).split(' ')[0].split('T')[0] if order.date else '' %}
-          <small>
-            • {{ order.product }} • {{ order.quantity }} L • {{ date_str }}
-          </small>
-        </div>
 
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
-            View Details
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-danger decline-btn" data-id="{{ order._id }}">
-            Decline
-          </button>
+            {% set date_str = (order.date|string).split(' ')[0].split('T')[0] if order.date else '' %}
+            <span class="client-summary">
+              <strong>{{ order.client_name or 'Client' }} ({{ order.client_code or '—' }})</strong>
+              <small class="text-muted"> • {{ order.product }} • {{ order.quantity }} L • {{ date_str }}</small>
+            </span>
+          </div>
+
+          <!-- RIGHT GROUP: BVR + order type + actions (stay together) -->
+          <div class="header-actions d-flex align-items-center ms-sm-auto flex-wrap">
+            <span class="text-muted small text-nowrap">
+              BVR (Truck#: {{ order.vehicle_number or '—' }} Phone: {{ order.driver_phone or '—' }})
+            </span>
+
+            <button type="button" class="btn btn-sm btn-outline-info text-nowrap"
+                    data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
+              View Details
+            </button>
+
+            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap decline-btn"
+                    data-id="{{ order._id }}">
+              Decline
+            </button>
+          </div>
         </div>
       </div>
 
@@ -330,14 +373,23 @@
             <div class="form-text text-muted">Only today or future dates are allowed.</div>
           </div>
 
+          <!-- Delivery Details: amount only when hired truck exists -->
           <div class="col-12 col-lg-8">
             <div class="metric-box">
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <div class="metric-heading mb-1">Delivery Details</div>
-                  <small class="text-muted">Confirm truck & driver, and set amount for this delivery.</small>
+                  {% if order.has_truck_order %}
+                    <small class="text-muted">Hired truck attached to this order. You can set/update the delivery amount.</small>
+                  {% else %}
+                    <small class="text-muted">No hired truck attached — delivery amount is not applicable.</small>
+                  {% endif %}
                 </div>
+                {% if order.has_truck_order %}
+                  <span class="badge bg-info text-dark">Hired Truck</span>
+                {% endif %}
               </div>
+
               <div class="row g-2 mt-2">
                 <div class="col-12 col-md-4">
                   <label class="form-label">Truck Number</label>
@@ -347,13 +399,21 @@
                   <label class="form-label">Driver Name</label>
                   <input type="text" class="form-control" value="{{ order.driver_name or '' }}" placeholder="Driver" readonly>
                 </div>
-                <div class="col-12 col-md-4">
-                  <label class="form-label">Amount</label>
-                  <input type="number" step="0.01" name="delivery_amount" class="form-control"
-                         value="{{ (order.delivery_amount if order.delivery_amount is not none else order.total_debt) or '' }}"
-                         placeholder="e.g. 3200.00">
-                  <div class="form-text text-muted">Used to update truck order total.</div>
-                </div>
+
+                {% if order.has_truck_order %}
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Amount</label>
+                    <input type="number" step="0.01" name="delivery_amount" class="form-control"
+                           value="{{ order.delivery_amount if order.delivery_amount is not none else '' }}"
+                           placeholder="e.g. 3200.00">
+                    <div class="form-text text-muted">Updates the hired truck order amount only.</div>
+                  </div>
+                {% else %}
+                  <div class="col-12 col-md-4">
+                    <label class="form-label">Amount</label>
+                    <input type="text" class="form-control" value="—" disabled>
+                  </div>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -398,7 +458,14 @@
               <li class="list-group-item"><strong>Quantity:</strong> {{ order.quantity or 'N/A' }}</li>
               <li class="list-group-item"><strong>Region:</strong> {{ order.region or 'N/A' }}</li>
               <li class="list-group-item"><strong>Depot:</strong> {{ order.depot or 'N/A' }}</li>
-              <li class="list-group-item"><strong>Amount:</strong> {{ (order.delivery_amount if order.delivery_amount is not none else order.total_debt) or 'N/A' }}</li>
+              <li class="list-group-item">
+                <strong>Amount:</strong>
+                {% if order.has_truck_order %}
+                  {{ order.delivery_amount if order.delivery_amount is not none else 'N/A' }}
+                {% else %}
+                  N/A
+                {% endif %}
+              </li>
             </ul>
           </div>
         </div>
@@ -442,7 +509,6 @@
   function showNotice(message, title){
     $('#feedbackModal .modal-title').text(title || 'Notice');
     $('#feedbackModalBody').html(message);
-    // ensure clean slate before opening a new modal
     resetModalState();
     const m = new bootstrap.Modal(document.getElementById('feedbackModal'));
     m.show();
@@ -755,7 +821,6 @@
           const a = document.createElement('a');
           a.href = res.invoice_url; a.target = '_blank'; a.rel = 'noopener';
           document.body.appendChild(a); a.click(); a.remove();
-          // clean any modal/backdrop before navigating
           resetModalState();
           if (typeof loadContent === 'function') setTimeout(() => loadContent('/orders','Review Orders'), 150);
           else setTimeout(() => location.reload(), 150);
@@ -817,8 +882,8 @@
     if ($bdcSel.prop('disabled')) { showNotice('BDC is not required for this order type.', 'Not Required'); return; }
 
     const $bdcOpt  = $bdcSel.find('option:selected');
-    const phoneRaw = $bdcOpt.data('rep-phone') || '';
-    const phone    = normalizePhone(phoneRaw);
+    thePhoneRaw = $bdcOpt.data('rep-phone') || '';
+    const phone    = normalizePhone(thePhoneRaw);
     if (!$bdcOpt.val()) { showNotice('Select a BDC first.', 'Missing BDC'); return; }
 
     const id     = $form.data('id');
