@@ -13,11 +13,9 @@
   <!-- Chart.js + date adapter for time axis -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-    <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
-
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
 
   <style>
-    /* THEME TOKENS */
     :root{
       /* Light */
       --bg:#f6f8fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
@@ -45,7 +43,9 @@
     .toolbar{ gap:.5rem; display:flex; flex-wrap:wrap }
 
     .theme-toggle{ border:1px solid var(--line); background:var(--card); color:var(--ink); }
-    .form-select{ background:var(--select-bg); color:var(--select-text); border-color:var(--select-border); }
+    .form-select, .form-control{
+      background:var(--select-bg); color:var(--select-text); border-color:var(--select-border);
+    }
 
     /* Top charts row */
     .top-charts{ margin-bottom:1rem; }
@@ -92,8 +92,7 @@
       display:grid; grid-template-columns: auto 1fr auto; align-items:center; gap:.5rem; margin:.15rem 0 .2rem;
     }
     .product-chip{
-      font-size:.72rem; font-weight:800; padding:.18rem .55rem; border-radius:8px;
-      border:1px solid var(--chip-border)
+      font-size:.72rem; font-weight:800; padding:.18rem .55rem; border-radius:8px; border:1px solid var(--chip-border)
     }
     .chip-pms{ background:color-mix(in srgb, var(--pms) 14%, transparent); color:color-mix(in srgb, var(--pms) 40%, #fff); }
     .chip-ago{ background:color-mix(in srgb, var(--ago) 14%, transparent); color:color-mix(in srgb, var(--ago) 40%, #fff); }
@@ -106,6 +105,9 @@
     .delta.down{ color:var(--down); background:color-mix(in srgb, var(--down) 12%, transparent) }
     .delta.flat{ color:var(--pms); background:color-mix(in srgb, var(--pms) 10%, transparent) }
     .delta.na{ color:var(--muted); background:transparent; border-style:dashed }
+
+    .meta{ color:var(--muted); font-size:.82rem; display:flex; gap:.6rem; flex-wrap:wrap; margin:.1rem 0 .35rem; }
+    .meta .dot{ opacity:.5 }
 
     .spark-wrap{ height:60px; margin-top:.25rem; }
     canvas.spark{ width:100% !important; height:60px !important; display:block; }
@@ -138,16 +140,14 @@
     }
     .app-footer img{ height:22px; width:auto; border-radius:6px; border:1px solid var(--line); background:#fff; }
 
-    /* Skeletons (first paint) */
+    /* Skeletons */
     .skeleton{ position:relative; overflow:hidden; background:var(--card); border:1px solid var(--line); border-radius:16px; min-height:120px; }
     .skeleton::after{
       content:""; position:absolute; inset:0; transform:translateX(-100%);
       background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--skeleton) 40%, transparent), transparent);
       animation: shimmer 1.2s infinite;
     }
-    @media (prefers-reduced-motion: reduce){
-      .skeleton::after{ animation: none; }
-    }
+    @media (prefers-reduced-motion: reduce){ .skeleton::after{ animation: none; } }
     @keyframes shimmer{ to { transform:translateX(100%); } }
 
     /* Responsive tweaks */
@@ -170,23 +170,35 @@
     </div>
     <div class="toolbar">
       <button id="themeToggle" class="btn btn-sm theme-toggle">Toggle Theme</button>
+
+      <!-- NEW: free text search -->
+      <input id="searchBox" type="search" class="form-control form-control-sm" placeholder="Search BDC, location, note…" style="min-width:220px" />
+
+      <!-- Existing product filter -->
       <select id="productFilter" class="form-select form-select-sm">
         <option value="ALL" selected>All Products</option>
         <option value="PMS">PMS</option>
         <option value="AGO">AGO</option>
       </select>
+
+      <!-- NEW: location filter (populated dynamically) -->
+      <select id="locationFilter" class="form-select form-select-sm">
+        <option value="__ALL__" selected>All Locations</option>
+      </select>
+
       <select id="sortBy" class="form-select form-select-sm">
         <option value="updated_desc" selected>Newest update</option>
         <option value="price_desc">Highest price</option>
         <option value="price_asc">Lowest price</option>
       </select>
+
       {% if not shared_view %}
       <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#shareModal">Share</button>
       {% endif %}
     </div>
   </div>
 
-  <!-- TOP CHARTS: PMS & AGO -->
+  <!-- TOP CHARTS -->
   <div class="top-charts row g-3">
     <div class="col-12 col-lg-6">
       <div class="chart-card">
@@ -213,7 +225,7 @@
   </div>
 
   {% if not shared_view %}
-  <!-- Share Modal (hidden on shared view) -->
+  <!-- Share Modal -->
   <div class="modal fade" id="shareModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content" style="background:var(--modal-bg); color:var(--ink); border:1px solid var(--line)">
@@ -227,7 +239,6 @@
             <select id="shareBdc" class="form-select">
               <option value="">Choose…</option>
               {% for b in bdcs %}
-                <!-- ensure plain string id -->
                 <option value="{{ b._id }}">{{ b.name }}</option>
               {% endfor %}
             </select>
@@ -243,29 +254,25 @@
   </div>
   {% endif %}
 
-  <!-- Alerts -->
   <div id="alertBox" class="mb-2"></div>
 
   <!-- GRID -->
   <div id="grid" class="row g-3">
-    <!-- lightweight skeletons on first paint -->
     <div class="col-12 col-md-6 col-lg-4"><div class="skeleton"></div></div>
     <div class="col-12 col-md-6 col-lg-4"><div class="skeleton"></div></div>
     <div class="col-12 col-md-6 col-lg-4"><div class="skeleton"></div></div>
   </div>
 
-  <!-- FOOTER -->
   <div class="app-footer">
     Powered by Truetype Services
     <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Truetype Services Logo">
   </div>
 
-  <!-- SPINNER -->
   <div class="spinner-overlay" id="pageSpinner"><div class="spinner-border"></div></div>
 
 <script>
 (() => {
-  const POLL_MS = 10000;                 // periodic refresh
+  const POLL_MS = 10000;
   const HISTORY_POINTS = 60;
   const qsToken = document.body.dataset.token || "";
   const sharedFlag = document.body.dataset.shared === "1";
@@ -278,7 +285,7 @@
   function setTheme(mode){
     document.documentElement.setAttribute('data-theme', mode);
     try{ localStorage.setItem('tt_theme', mode); }catch(e){}
-    drawTopCharts(lastData); // recolor charts on theme swap
+    drawTopCharts(lastData);
   }
   (function initTheme(){
     const saved = (localStorage.getItem('tt_theme') || '').toLowerCase();
@@ -295,11 +302,15 @@
   const $spinner = document.getElementById('pageSpinner');
   const $pmsInfo = document.getElementById('pmsInfo');
   const $agoInfo = document.getElementById('agoInfo');
+  const $searchBox = document.getElementById('searchBox');
+  const $locFilter = document.getElementById('locationFilter');
+  const $prodFilter = document.getElementById('productFilter');
+  const $sortBy = document.getElementById('sortBy');
 
-  // CHARTS
+  // Charts
   let pollTimer = null;
   let fetchController = null;
-  const charts = new Map();     // mini charts (key -> Chart)
+  const charts = new Map();
   let topPMSChart = null;
   let topAGOChart = null;
 
@@ -339,7 +350,6 @@
     const arrow = (dir==='up')?'↑':(dir==='down')?'↓':'•';
     return `<span class="delta ${cls}">${arrow} ${pct(change.pct)}</span>`;
   }
-
   function lastThreePills(recent3){
     if(!recent3 || !recent3.length) return '';
     return `<div class="last3">${
@@ -347,48 +357,107 @@
     }</div>`;
   }
 
+  // ---- Filters helpers
+  function currentProductsParam(){
+    const pf = $prodFilter.value;
+    if (pf === 'ALL') return 'PMS,AGO';
+    return pf;
+  }
+  function normalizeLoc(v){ return (v || '').trim(); }
+  function getActiveLocation(){ return $locFilter.value || '__ALL__'; }
+  function getSearchTerm(){ return ($searchBox.value || '').toLowerCase().trim(); }
+
+  // ---- Populate location filter from data (unique list of current locations)
+  function populateLocations(data){
+    const prev = $locFilter.value || '__ALL__';
+    const set = new Set();
+    let hasUnspecified = false;
+
+    (data?.bdcs || []).forEach(b => {
+      ['PMS','AGO'].forEach(prod => {
+        const cur = b?.prices?.[prod]?.current;
+        if(!cur) return;
+        const loc = normalizeLoc(cur.location);
+        if(loc) set.add(loc); else hasUnspecified = true;
+      });
+    });
+
+    const opts = [`<option value="__ALL__">All Locations</option>`];
+    if (hasUnspecified) opts.push(`<option value="__UNSPEC__">(Unspecified)</option>`);
+    Array.from(set).sort((a,b)=>a.localeCompare(b)).forEach(loc => {
+      opts.push(`<option value="${loc.replace(/"/g,'&quot;')}">${loc}</option>`);
+    });
+
+    $locFilter.innerHTML = opts.join('');
+    // restore selection if still present
+    const stillThere = Array.from($locFilter.options).some(o => o.value === prev);
+    $locFilter.value = stillThere ? prev : '__ALL__';
+  }
+
+  // ---- Card template with location/description lines
+  function productBlock(item, prod, chipClass){
+    const cur = item?.prices?.[prod]?.current;
+    if(!cur) return '';
+
+    const chg = item.prices[prod].change;
+    const r3  = item.prices[prod].recent3 || [];
+
+    const loc = normalizeLoc(cur.location) || '(Unspecified)';
+    const desc = (cur.description || '').trim();
+
+    return `
+      <div class="row-price">
+        <span class="product-chip ${chipClass}">${prod}</span>
+        <div class="price-xl"><span class="ccy">GHS</span>${fmt(cur.price)}</div>
+        <div>${changeBadge(chg)}</div>
+      </div>
+      <div class="meta">
+        <span>📍 ${loc}</span>
+        ${desc ? `<span class="dot">•</span><span title="${desc}">📝 ${desc}</span>` : ``}
+      </div>
+      ${lastThreePills(r3)}
+      <div class="spark-wrap"><canvas class="spark" data-key="${item._id}-${prod}"></canvas></div>
+    `;
+  }
+
   function cardTemplate(item){
-    const pf = document.getElementById('productFilter').value;
-    const hasPMS = !!item.prices?.PMS?.current;
-    const hasAGO = !!item.prices?.AGO?.current;
-    const showPMS = (pf === 'ALL' || pf === 'PMS') && hasPMS;
-    const showAGO = (pf === 'ALL' || pf === 'AGO') && hasAGO;
+    const pf = $prodFilter.value;
+    const activeLoc = getActiveLocation();
+    const q = getSearchTerm();
 
-    const lastISO = [
-      item.prices?.PMS?.current?.time,
-      item.prices?.AGO?.current?.time
-    ].filter(Boolean).map(t=>new Date(t).getTime()).reduce((a,b)=>Math.max(a,b),0);
+    // Per-product visibility based on product filter + location + search
+    function match(prod){
+      if (pf !== 'ALL' && pf !== prod) return false;
+      const cur = item?.prices?.[prod]?.current; if(!cur) return false;
 
-    const block = [];
-    if (showPMS){
-      const cur   = item.prices.PMS.current;
-      const chg   = item.prices.PMS.change;
-      const r3    = item.prices.PMS.recent3 || [];
-      block.push(`
-        <div class="row-price">
-          <span class="product-chip chip-pms">PMS</span>
-          <div class="price-xl"><span class="ccy">GHS</span>${fmt(cur.price)}</div>
-          <div>${changeBadge(chg)}</div>
-        </div>
-        ${lastThreePills(r3)}
-        <div class="spark-wrap"><canvas class="spark" data-key="${item._id}-PMS"></canvas></div>
-      `);
+      // location filter
+      const loc = normalizeLoc(cur.location);
+      if (activeLoc !== '__ALL__') {
+        if (activeLoc === '__UNSPEC__' && loc) return false;
+        if (activeLoc !== '__UNSPEC__' && loc !== activeLoc) return false;
+      }
+
+      // search filter (BDC name, location, description)
+      if (q) {
+        const hay = [
+          String(item?.name || '').toLowerCase(),
+          String(loc || '').toLowerCase(),
+          String(cur?.description || '').toLowerCase()
+        ].join(' ');
+        if (!hay.includes(q)) return false;
+      }
+      return true;
     }
-    if (showAGO){
-      const cur   = item.prices.AGO.current;
-      const chg   = item.prices.AGO.change;
-      const r3    = item.prices.AGO.recent3 || [];
-      block.push(`
-        <div class="row-price">
-          <span class="product-chip chip-ago">AGO</span>
-          <div class="price-xl"><span class="ccy">GHS</span>${fmt(cur.price)}</div>
-          <div>${changeBadge(chg)}</div>
-        </div>
-        ${lastThreePills(r3)}
-        <div class="spark-wrap"><canvas class="spark" data-key="${item._id}-AGO"></canvas></div>
-      `);
-    }
+
+    const showPMS = match('PMS');
+    const showAGO = match('AGO');
     if (!showPMS && !showAGO) return '';
+
+    // last updated stamp (max across shown products)
+    const times = [];
+    if (showPMS) times.push(item?.prices?.PMS?.current?.time);
+    if (showAGO) times.push(item?.prices?.AGO?.current?.time);
+    const lastISO = times.filter(Boolean).map(t=>new Date(t).getTime()).reduce((a,b)=>Math.max(a,b),0);
 
     return `
       <div class="col-12 col-md-6 col-lg-4">
@@ -400,20 +469,15 @@
             </div>
             <div class="stamp">${lastISO ? timeAgo(lastISO) : '—'}</div>
           </div>
-          ${block.join('')}
+          ${showPMS ? productBlock(item, 'PMS', 'chip-pms') : ''}
+          ${showAGO ? productBlock(item, 'AGO', 'chip-ago') : ''}
         </div>
       </div>
     `;
   }
 
-  function destroyMiniCharts(){
-    charts.forEach(ch => { try { ch.destroy(); } catch(e){} });
-    charts.clear();
-  }
-  function destroyTopCharts(){
-    if(topPMSChart){ try{ topPMSChart.destroy(); }catch(e){} topPMSChart=null; }
-    if(topAGOChart){ try{ topAGOChart.destroy(); }catch(e){} topAGOChart=null; }
-  }
+  function destroyMiniCharts(){ charts.forEach(ch => { try { ch.destroy(); } catch(e){} }); charts.clear(); }
+  function destroyTopCharts(){ if(topPMSChart){ try{ topPMSChart.destroy(); }catch(e){} topPMSChart=null; } if(topAGOChart){ try{ topAGOChart.destroy(); }catch(e){} topAGOChart=null; } }
 
   function observeAndDrawMini(canvas, series, lineColor){
     const draw = () => {
@@ -427,18 +491,13 @@
           responsive: true, maintainAspectRatio: false, animation: !prefersReduced,
           parsing: false,
           plugins: { legend: { display:false }, tooltip:{ enabled:true } },
-          scales: {
-            x:{ display:false, type:'time' },
-            y:{ display:false }
-          }
+          scales: { x:{ display:false, type:'time' }, y:{ display:false } }
         }
       });
       charts.set(key, ch);
     };
     const io = new IntersectionObserver((entries, obs) => {
-      entries.forEach(entry=>{
-        if (entry.isIntersecting){ draw(); obs.unobserve(entry.target); }
-      });
+      entries.forEach(entry=>{ if (entry.isIntersecting){ draw(); obs.unobserve(entry.target); } });
     }, { root: null, threshold: 0.1 });
     io.observe(canvas);
   }
@@ -463,42 +522,24 @@
 
     function buildDatasets(product, infoEl){
       const list = data.top_lists?.[product] || [];
-      if (list.length === 0){
-        if(infoEl) infoEl.textContent = '';
-        return [];
-      }
+      if (list.length === 0){ if(infoEl) infoEl.textContent = ''; return []; }
       const mostRecentTs = list.find(x=>x.time)?.time;
       if(infoEl) infoEl.textContent = mostRecentTs ? `Updated ${timeAgo(mostRecentTs)}` : '';
 
       return list.map((r, i) => ({
         label: `${r.name} — GHS ${Number(r.price).toFixed(3)}${(r.change_pct!==undefined && r.change_pct!==null)?` (${(r.change_pct>0?'+':'')+Number(r.change_pct).toFixed(2)}%)`:''}`,
         data: seriesFor(r._id, product).map(p => ({ x: p.t, y: p.y })),
-        borderWidth: 2,
-        borderColor: palette[i % palette.length],
-        pointRadius: 0,
-        tension: .35
+        borderWidth: 2, borderColor: palette[i % palette.length], pointRadius: 0, tension: .35
       }));
     }
 
     const gridColor = (getComputedStyle(document.documentElement).getPropertyValue('--line') || '#e2e8f0').trim();
-
     const commonOpts = {
-      responsive:true, maintainAspectRatio:false, animation: !prefersReduced,
-      parsing:false,
-      interaction:{ mode:'nearest', intersect:false },
-      plugins:{ 
-        legend:{
-          display:true, position:'bottom',
-          labels:{ boxWidth:10, usePointStyle:true, filter: (li) => li.text && li.text.trim().length > 0 }
-        },
-        tooltip:{
-          callbacks:{ label: (ctx)=> ` ${ctx.dataset.label} • ${fmt(ctx.parsed.y)}` }
-        }
-      },
-      scales:{
-        x:{ type:'time', time:{ tooltipFormat:'MMM d, HH:mm' }, grid:{ display:false } },
-        y:{ grid:{ color: gridColor }, ticks:{ callback:(v)=>`GHS ${fmt(v)}` } }
-      }
+      responsive:true, maintainAspectRatio:false, animation: !prefersReduced, parsing:false, interaction:{ mode:'nearest', intersect:false },
+      plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:10, usePointStyle:true } },
+                tooltip:{ callbacks:{ label: (ctx)=> ` ${ctx.dataset.label} • ${fmt(ctx.parsed.y)}` } } },
+      scales:{ x:{ type:'time', time:{ tooltipFormat:'MMM d, HH:mm' }, grid:{ display:false } },
+               y:{ grid:{ color: gridColor }, ticks:{ callback:(v)=>`GHS ${fmt(v)}` } } }
     };
 
     const dsP = buildDatasets('PMS', $pmsInfo);
@@ -511,10 +552,12 @@
   function renderBoard(data){
     lastData = data;
 
-    const pf = document.getElementById('productFilter').value;
-    const sorted = [...(data.bdcs || [])];
+    // keep the location list fresh (based on latest fetch result)
+    populateLocations(data);
 
-    // sort using CURRENT prices/times
+    // clone and compute sort keys
+    const pf = $prodFilter.value;
+    const sorted = [...(data.bdcs || [])];
     sorted.forEach(d=>{
       const tP = d.prices?.PMS?.current?.time;
       const tA = d.prices?.AGO?.current?.time;
@@ -529,13 +572,13 @@
       );
     });
 
-    const sortBy = document.getElementById('sortBy').value;
+    const sortBy = $sortBy.value;
     if(sortBy === 'updated_desc') sorted.sort((a,b)=>b._lastUpdated - a._lastUpdated);
     if(sortBy === 'price_desc')   sorted.sort((a,b)=>(b._price - a._price));
     if(sortBy === 'price_asc')    sorted.sort((a,b)=>(a._price - b._price));
 
-    const html = sorted.map(cardTemplate).join('').trim();
-    $grid.innerHTML = html || `<div class="col-12"><div class="empty">No prices yet for the selected filter.</div></div>`;
+    const html = sorted.map(cardTemplate).filter(Boolean).join('').trim();
+    $grid.innerHTML = html || `<div class="col-12"><div class="empty">No prices match the current filters.</div></div>`;
 
     // mini-charts
     const canvases = Array.from(document.querySelectorAll('canvas.spark'));
@@ -555,12 +598,6 @@
     drawTopCharts(data);
   }
 
-  function currentProductsParam(){
-    const pf = document.getElementById('productFilter').value;
-    if (pf === 'ALL') return 'PMS,AGO';
-    return pf;
-  }
-
   let inflightFetchId = 0;
   async function fetchBoard(){
     try{ fetchController?.abort(); }catch(e){}
@@ -578,10 +615,7 @@
       const res = await fetch(url, { signal: fetchController.signal, cache:'no-store' });
       if(!res.ok) throw new Error('Network error');
       const j = await res.json();
-      if(j && j.ok !== true){
-        throw new Error(j?.error || 'Failed loading data');
-      }
-
+      if(j && j.ok !== true){ throw new Error(j?.error || 'Failed loading data'); }
       if (reqId !== inflightFetchId) return; // drop stale response
 
       $alert.innerHTML = '';
@@ -596,9 +630,16 @@
     }
   }
 
-  // Filters
-  document.getElementById('productFilter')?.addEventListener('change', fetchBoard);
-  document.getElementById('sortBy')?.addEventListener('change', fetchBoard);
+  // Filters & search events
+  $prodFilter?.addEventListener('change', fetchBoard);
+  $sortBy?.addEventListener('change', fetchBoard);
+  $locFilter?.addEventListener('change', () => renderBoard(lastData));
+
+  let searchTimer = null;
+  $searchBox?.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderBoard(lastData), 200);
+  });
 
   // Share flow (only if Share exists)
   const genBtn = document.getElementById('genShareBtn');
@@ -613,13 +654,9 @@
         showSpinner(true);
         const fd = new FormData(); fd.append('bdc_id', id);
         const res = await fetch('/prices/share_link', {
-          method:'POST',
-          body: fd,
-          headers: { 'Accept': 'application/json' }
+          method:'POST', body: fd, headers: { 'Accept': 'application/json' }
         });
-        let j;
-        try { j = await res.json(); }
-        catch(e){ throw new Error('Unexpected response'); }
+        let j; try { j = await res.json(); } catch(e){ throw new Error('Unexpected response'); }
         if(!j.ok){ box.textContent = j.error || 'Failed.'; return; }
         box.innerHTML = `Link: <a href="${j.share_url}" target="_blank" rel="noopener">${j.share_url}</a><br>
           <a class="btn btn-sm btn-success mt-2" href="${j.wa_url}" target="_blank" rel="noopener">Share via WhatsApp</a>`;
