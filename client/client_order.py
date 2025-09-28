@@ -23,14 +23,12 @@ def ensure_indexes():
     except Exception:
         pass
 
-    # Truck numbers: remove any legacy UNIQUE single-field index on vehicle_number_norm,
-    # then create the CORRECT UNIQUE compound index (client_id, vehicle_number_norm).
+    # Truck numbers: (per-client recent address book)
     try:
         info = truck_numbers_collection.index_information()
-        # Drop any unique index that is ONLY on vehicle_number_norm
+        # Drop any legacy UNIQUE index on only vehicle_number_norm
         for name, spec in info.items():
             keys = spec.get("key") or spec.get("key_pattern") or []
-            # Normalize keys to list of tuples
             if isinstance(keys, dict):
                 keys = list(keys.items())
             is_only_norm = (len(keys) == 1 and keys[0][0] == "vehicle_number_norm" and keys[0][1] == 1)
@@ -40,31 +38,31 @@ def ensure_indexes():
                 except Exception:
                     pass
 
-        # Also drop by known legacy name if present
         if "vehicle_number_norm_unique" in info:
             try:
                 truck_numbers_collection.drop_index("vehicle_number_norm_unique")
             except Exception:
                 pass
 
-        # Create the correct UNIQUE compound index
         truck_numbers_collection.create_index(
             [("client_id", 1), ("vehicle_number_norm", 1)],
             name="client_vehicle_norm_unique",
             unique=True,
             background=True
         )
-
-        # Keep a NON-UNIQUE single-field index for lookups (ok if it already exists)
         truck_numbers_collection.create_index(
             [("vehicle_number_norm", 1)],
             name="vehicle_number_norm_idx",
             background=True
         )
     except OperationFailure:
-        # If there are true duplicates per (client_id, vehicle_number_norm), index creation would fail.
-        # In that rare case, you should clean duplicates first (keep newest by updated_at).
-        # Leaving silent to avoid breaking runtime; see comment block below for a cleanup script.
+        pass
+
+    # Trucks: helpful lookups (not unique; plates may collide across sources)
+    try:
+        trucks_collection.create_index([("truck_number", 1)], name="truck_number_idx", background=True)
+        trucks_collection.create_index([("truck_number_norm", 1)], name="truck_number_norm_idx", background=True)
+    except Exception:
         pass
 
 ensure_indexes()
@@ -97,14 +95,19 @@ def submit_order():
         return redirect(url_for('client_login'))
 
     if request.method == 'POST':
-        product       = request.form.get('product')
-        quantity      = _to_int_qty(request.form.get('quantity'))
-        region        = request.form.get('region')
-        vehicle_number= (request.form.get('vehicle_number') or "").strip()
-        driver_name   = (request.form.get('driver_name') or "").strip()
-        driver_phone  = (request.form.get('driver_phone') or "").strip()
-        order_type    = (request.form.get('order_type') or '').strip().lower()
+        product        = request.form.get('product')
+        quantity       = _to_int_qty(request.form.get('quantity'))
+        region         = request.form.get('region')
+        vehicle_number = (request.form.get('vehicle_number') or "").strip()
+        driver_name    = (request.form.get('driver_name') or "").strip()
+        driver_phone   = (request.form.get('driver_phone') or "").strip()
+        order_type     = (request.form.get('order_type') or '').strip().lower()
 
+        # ✅ Hire Truck selection comes as the truck's _id
+        truck_id_raw   = (request.form.get('truck_id') or "").strip()
+        is_hire_truck  = bool(truck_id_raw)
+
+        # Basic validation
         if not all([product, quantity, region, vehicle_number, driver_name, driver_phone, order_type]):
             flash("All fields are required.", "danger")
             return redirect(url_for('client_order.submit_order'))
@@ -112,10 +115,18 @@ def submit_order():
             flash("Invalid order type selected.", "danger")
             return redirect(url_for('client_order.submit_order'))
 
-        # Optional match against admin pool
-        truck = trucks_collection.find_one({"truck_number": vehicle_number})
+        # ---------- Resolve HIRE TRUCK only when explicitly selected ----------
+        truck = None
+        if is_hire_truck:
+            tid = _maybe_oid(truck_id_raw)
+            if isinstance(tid, ObjectId):
+                truck = trucks_collection.find_one({"_id": tid})
+            if truck is None:
+                # Degrade gracefully: treat as no hired truck
+                is_hire_truck = False
+                flash("Selected hire truck could not be verified. Order recorded without a hired truck.", "warning")
 
-        # Snapshot product pricing/taxes internally (not shown to client)
+        # Snapshot product pricing/taxes (internal)
         prod_doc = products_collection.find_one(
             {"name": Regex(f"^{re.escape(product)}$", "i")},
             {"s_price": 1, "p_price": 1, "s_tax": 1, "p_tax": 1, "name": 1}
@@ -125,8 +136,12 @@ def submit_order():
         snapshot_s_tax   = (prod_doc or {}).get("s_tax")
         snapshot_p_tax   = (prod_doc or {}).get("p_tax")
 
+        client_oid = _maybe_oid(session['client_id'])
+        vehicle_number_norm = _norm_plate(vehicle_number)
+
+        # Base order (always created)
         base_order = {
-            "client_id": _maybe_oid(session['client_id']),
+            "client_id": client_oid,
             "product": product,
             "vehicle_number": vehicle_number,
             "driver_name": driver_name,
@@ -140,11 +155,16 @@ def submit_order():
             "product_p_price": snapshot_p_price,
             "product_s_tax":   snapshot_s_tax,
             "product_p_tax":   snapshot_p_tax,
+
+            # Audit flags
+            "hired_truck": bool(is_hire_truck),
+            "truck_verified": bool(truck),  # true only if hire truck exists by _id
+            "truck_number_norm": vehicle_number_norm
         }
         if truck:
             base_order["truck_id"] = truck["_id"]
 
-        # insert order with collision-proof code generation
+        # Insert order with collision-proof order_id
         while True:
             code = _generate_order_id()
             doc = dict(base_order)
@@ -154,27 +174,31 @@ def submit_order():
                 order_mongo_id = result.inserted_id
                 break
             except DuplicateKeyError:
-                # rare: order_id collision, just retry
-                continue
+                continue  # retry on rare collision
 
+        # ---------- Create truck_orders ONLY when hire truck was selected and verified ----------
         if truck:
+            trk_driver_name  = (truck.get("driver_name") or driver_name or "").strip()
+            trk_driver_phone = (truck.get("driver_phone") or driver_phone or "").strip()
+
             truck_orders_collection.insert_one({
                 "order_ref": str(order_mongo_id),
                 "order_id": code,
-                "client_id": session['client_id'],
+                "client_id": str(client_oid) if isinstance(client_oid, ObjectId) else client_oid,
                 "truck_id": str(truck["_id"]),
-                "truck_number": truck.get("truck_number"),
-                "driver_name": truck.get("driver_name") or driver_name,
-                "driver_phone": truck.get("driver_phone") or driver_phone,
+                "truck_number": truck.get("truck_number") or vehicle_number,
+                "driver_name": trk_driver_name,
+                "driver_phone": trk_driver_phone,
                 "quantity": quantity,
                 "region": region,
                 "status": "pending",
                 "created_at": datetime.utcnow()
             })
+            flash(f"Order submitted successfully with a hired truck. Your Order ID is {code}", "success")
+        else:
+            flash(f"Order submitted successfully. Your Order ID is {code}", "info")
 
-        # Upsert into per-client recent trucks address book (race-safe)
-        client_oid = _maybe_oid(session.get('client_id'))
-        vehicle_number_norm = _norm_plate(vehicle_number)
+        # Upsert into per-client recent trucks (address book)
         flt = {"client_id": client_oid, "vehicle_number_norm": vehicle_number_norm}
         upsert_doc = {
             "client_id": client_oid,
@@ -186,7 +210,7 @@ def submit_order():
             "updated_at": datetime.utcnow(),
         }
 
-        # Retry once on DuplicateKeyError to tolerate concurrent upserts
+        # Retry once on DuplicateKeyError for concurrent upserts
         for _ in range(2):
             try:
                 truck_numbers_collection.update_one(
@@ -196,25 +220,22 @@ def submit_order():
                 )
                 break
             except DuplicateKeyError:
-                # If another request inserted it this instant, just convert to plain update
                 truck_numbers_collection.update_one(flt, {"$set": upsert_doc}, upsert=False)
                 break
 
-        flash(f"Order submitted successfully! Your Order ID is {code}", "success")
         return redirect(url_for('client_order.submit_order'))
 
-    # ----- GET: include per-client RECENT TRUCKS -----
+    # ----- GET: include per-client RECENT TRUCKS + all trucks for select -----
     products = list(products_collection.find({}, {"name": 1, "description": 1}))
+    # Include _id so the form can post truck_id when selecting a Hire Truck
     trucks   = list(trucks_collection.find({}, {"truck_number": 1, "capacity": 1, "driver_name": 1, "driver_phone": 1}))
-
-    # pull last 20 saved trucks for this clientId (dedup by vehicle_number_norm, most recent first)
     cid = _maybe_oid(session['client_id'])
+
     recents_cursor = truck_numbers_collection.find(
         {"client_id": cid},
         {"_id": 0, "vehicle_number": 1, "destination": 1, "driver_name": 1, "driver_phone": 1, "vehicle_number_norm": 1, "updated_at": 1}
     ).sort("updated_at", -1).limit(100)
 
-    # Deduplicate by normalized plate while preserving order
     seen = set()
     recent_trucks = []
     for doc in recents_cursor:
@@ -236,9 +257,6 @@ def submit_order():
 
 # ----------------------------
 # (Optional) ONE-TIME CLEANUP
-# If index creation fails due to true duplicates for the SAME client & plate,
-# run a maintenance script to keep the newest (by updated_at) and delete others,
-# then call ensure_indexes() again.
 # ----------------------------
 # from pymongo import DESCENDING
 # def dedupe_truck_numbers():
