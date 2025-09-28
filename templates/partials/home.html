@@ -13,6 +13,74 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
   <style>
+    /* === Doughnut % text alignment (CSS-only, no markup changes) === */
+/* Targets the card that contains the approval doughnut canvas */
+.card:has(canvas#approvalDonut) .card-body{
+  display: grid;
+  grid-template-columns: auto 1fr;   /* chart | text */
+  align-items: center;
+  gap: 20px;
+  /* allow the canvas to respect size from JS while staying tidy */
+}
+
+/* Make the doughnut a predictable box without squishing */
+#approvalDonut{
+  width: 280px !important;
+  height: 280px !important;
+  max-width: 100%;
+  display: block;
+}
+
+/* Common labels people use for the side percentage text.
+   Your dashboard.js likely injects one of these.
+   If your element uses a different selector, add it here. */
+.card:has(canvas#approvalDonut) .approval-pct,
+.card:has(canvas#approvalDonut) .approval-rate,
+.card:has(canvas#approvalDonut) .percentage,
+.card:has(canvas#approvalDonut) .pct,
+.card:has(canvas#approvalDonut) [data-approval-pct]{
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(1.6rem, 2.2vw + .4rem, 3rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Optional supporting lines that often sit under the big % */
+.card:has(canvas#approvalDonut) .approval-caption{
+  color: #6b7280;
+  font-weight: 600;
+  margin-top: .25rem;
+}
+.card:has(canvas#approvalDonut) .approval-detail{
+  margin-top: .35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prevent overlap if someone previously absolutely-positioned the text */
+.card:has(canvas#approvalDonut) .approval-pct,
+.card:has(canvas#approvalDonut) .approval-rate,
+.card:has(canvas#approvalDonut) .percentage,
+.card:has(canvas#approvalDonut) .pct,
+.card:has(canvas#approvalDonut) [data-approval-pct]{
+  position: static !important;  /* cancel absolute overlays */
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* Mobile: stack donut above the text for clean layout */
+@media (max-width: 576px){
+  .card:has(canvas#approvalDonut) .card-body{
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  #approvalDonut{
+    margin-inline: auto;
+    width: 240px !important;
+    height: 240px !important;
+  }
+}
+
     :root{
       --ticker-h: 44px;
       --ticker-bg: #0f172a;
