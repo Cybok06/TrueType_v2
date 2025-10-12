@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Leaves & Approvals</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap / jQuery / Icons / Chart.js -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <style>
+    :root { --brand:#0d6efd; --brand-600:#0b5ed7; --brand-50:#e7f1ff; --ink:#0b2447; }
+    body { background:#f7f9fc; }
+    .page-title{ color: var(--brand-600); }
+    .chip{ display:inline-flex; align-items:center; padding:.15rem .55rem; border-radius:999px; font-size:.75rem; background:var(--brand-50); color:#0b3c8a; }
+    .status-badge { text-transform: uppercase; letter-spacing:.02em; }
+    .kpi { border:1px solid rgba(13,110,253,.12); }
+    .table-responsive{ max-height: calc(100vh - 420px); }
+    @media (max-width: 576px){ .table-responsive{ max-height: calc(100vh - 540px); } }
+
+    /* Slide-over filters */
+    #filterPanel {
+      position: fixed; top:0; right:-360px; width: 360px; max-width: 90vw; height: 100vh;
+      background:#fff; box-shadow:-8px 0 18px rgba(13,110,253,.12);
+      transition:right .25s ease; z-index: 1100; padding-bottom: 1rem;
+      border-left: 1px solid rgba(13,110,253,.2);
+    }
+    #filterPanel.open{ right: 0; }
+    #filterPanel .head{
+      position: sticky; top:0; background:linear-gradient(0deg, #fff, #f4f8ff); border-bottom:1px solid rgba(13,110,253,.15);
+      padding: .85rem 1rem; display:flex; align-items:center; justify-content:space-between;
+    }
+    .filter-toggle{ position: fixed; right: 1rem; bottom: 1rem; z-index: 1101; }
+
+    /* Chart container fix to prevent infinite resize/zoom */
+    .chart-wrap{
+      height: 280px; /* controls chart height; adjust as needed */
+    }
+    @media (min-width: 992px){
+      .chart-wrap{ height: 320px; }
+    }
+  </style>
+</head>
+<body>
+  {% include 'frontdesk_pages/front_desk_sidebar.html' %}
+  <div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <h3 class="m-0 page-title"><i class="bi bi-calendar2-check me-2"></i>Leaves & Approvals</h3>
+        <span class="badge text-bg-primary">HRIS</span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newLeaveModal">
+          <i class="bi bi-plus-lg"></i> New Request
+        </button>
+        <button id="btnToggleFilters" class="btn btn-outline-primary">
+          <i class="bi bi-funnel"></i> Filters
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI + Charts -->
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="card kpi">
+          <div class="card-body">
+            <div class="text-muted small">Pending Manager</div>
+            <div id="kpiPending" class="fs-4 fw-semibold">0</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card kpi">
+          <div class="card-body">
+            <div class="text-muted small">Manager Approved</div>
+            <div id="kpiMApproved" class="fs-4 fw-semibold">0</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card kpi">
+          <div class="card-body">
+            <div class="text-muted small">HR Confirmed</div>
+            <div id="kpiHR" class="fs-4 fw-semibold">0</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card kpi">
+          <div class="card-body">
+            <div class="text-muted small">Rejected</div>
+            <div id="kpiRejected" class="fs-4 fw-semibold">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-8">
+        <div class="card">
+          <div class="card-header bg-white d-flex align-items-center justify-content-between">
+            <strong><i class="bi bi-graph-up-arrow me-2"></i>Total Leave Days per Month</strong>
+            <div class="d-flex align-items-center gap-2">
+              <input id="metricsYear" type="number" class="form-control form-control-sm" min="1990" style="max-width:110px">
+              <button id="btnReloadMetrics" class="btn btn-outline-primary btn-sm">Reload</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- FIX: use container with fixed height; canvas has no height attribute -->
+            <div class="chart-wrap">
+              <canvas id="monthlyChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="card">
+          <div class="card-header bg-white"><strong><i class="bi bi-people me-2"></i>Top Employees by Leave Days</strong></div>
+          <div class="card-body">
+            <div class="table-responsive" style="max-height:260px;">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th>Employee</th><th class="text-end">Days</th></tr></thead>
+                <tbody id="topEmployees"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Requests Table -->
+    <div class="card">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <strong><i class="bi bi-list-ul me-2"></i>Requests</strong>
+        <div class="text-muted small" id="meta"></div>
+      </div>
+      <div class="card-body p-2 p-sm-3">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-primary" style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>Dates</th>
+                <th>Days</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="d-flex align-items-center justify-content-between mt-2">
+          <div></div>
+          <div class="btn-group">
+            <button id="prev" class="btn btn-outline-primary btn-sm">Prev</button>
+            <button id="next" class="btn btn-outline-primary btn-sm">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-over Filters -->
+  <div id="filterPanel" aria-hidden="true">
+    <div class="head">
+      <strong><i class="bi bi-funnel me-2"></i>Filters</strong>
+      <button id="closeFilterPanel" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="p-3">
+      <div class="mb-2">
+        <label class="form-label">Search</label>
+        <input id="q" class="form-control" placeholder="Employee, reason, status..."/>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Employee</label>
+        <select id="employee" class="form-select"></select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Type</label>
+        <select id="type" class="form-select"></select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Status</label>
+        <select id="status" class="form-select">
+          <option value="">All</option>
+          <option value="pending_manager">Pending Manager</option>
+          <option value="manager_approved">Manager Approved</option>
+          <option value="manager_rejected">Manager Rejected</option>
+          <option value="hr_confirmed">HR Confirmed</option>
+          <option value="hr_rejected">HR Rejected</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="row g-2">
+        <div class="col-6">
+          <label class="form-label">Start</label>
+          <input id="start" type="date" class="form-control"/>
+        </div>
+        <div class="col-6">
+          <label class="form-label">End</label>
+          <input id="end" type="date" class="form-control"/>
+        </div>
+      </div>
+      <div class="row g-2 mt-2">
+        <div class="col-6">
+          <label class="form-label">Per page</label>
+          <select id="per" class="form-select">
+            <option>10</option><option selected>25</option><option>50</option><option>100</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Sort</label>
+          <select id="sort" class="form-select">
+            <option value="-start_date" selected>Start (newest)</option>
+            <option value="start_date">Start (oldest)</option>
+            <option value="-created_at">Created (newest)</option>
+            <option value="created_at">Created (oldest)</option>
+          </select>
+        </div>
+      </div>
+      <div class="d-grid mt-3">
+        <button id="btnApply" class="btn btn-primary"><i class="bi bi-check2"></i> Apply</button>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-primary filter-toggle d-lg-none" id="floatFilters">
+    <i class="bi bi-funnel"></i>
+  </button>
+
+  <!-- New Leave Modal -->
+  <div class="modal fade" id="newLeaveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-primary-subtle">
+          <h5 class="modal-title">New Leave Request</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="leaveForm" class="row g-3">
+            <div class="col-12 col-lg-6">
+              <label class="form-label">Employee</label>
+              <select id="emp_id" class="form-select" required></select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label class="form-label">Type</label>
+              <select id="lv_type" class="form-select" required></select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label class="form-label">Manager (username) <span class="text-muted small">(optional)</span></label>
+              <input id="manager" class="form-control" placeholder="Manager must approve"/>
+            </div>
+
+            <div class="col-6 col-lg-3">
+              <label class="form-label">Start</label>
+              <input id="lv_start" type="date" class="form-control" required/>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label class="form-label">End</label>
+              <input id="lv_end" type="date" class="form-control" required/>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label">Reason</label>
+              <input id="reason" class="form-control" placeholder="Optional"/>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Attachment <span class="text-muted small">(optional)</span></label>
+              <input id="lv_file" type="file" class="form-control"/>
+            </div>
+
+            <div class="col-12">
+              <div id="conflictsBox" class="alert alert-warning d-none"></div>
+            </div>
+
+            <div class="col-12">
+              <div id="balanceBox" class="alert alert-info d-none small"></div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button id="btnCreate" class="btn btn-primary">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------------- Utilities & State ----------------
+    const $  = (s,el=document)=>el.querySelector(s);
+    const $$ = (s,el=document)=>Array.from(el.querySelectorAll(s));
+    const fmtDate = (s)=> s ? new Date(s).toLocaleDateString() : "—";
+    const badgeFor = (status)=>{
+      const map={
+        pending_manager: 'secondary',
+        manager_approved: 'info',
+        manager_rejected: 'danger',
+        hr_confirmed: 'success',
+        hr_rejected: 'danger',
+        cancelled: 'secondary'
+      };
+      return map[status] || 'secondary';
+    };
+    let CUR = { page:1, total:0, per:25 };
+    let monthlyChart;
+
+    // ---------------- Slide-over filters ----------------
+    const panel = $('#filterPanel');
+    function openFilters(){ panel.classList.add('open'); panel.setAttribute('aria-hidden','false'); }
+    function closeFilters(){ panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
+    $('#btnToggleFilters').addEventListener('click', openFilters);
+    $('#floatFilters').addEventListener('click', openFilters);
+    $('#closeFilterPanel').addEventListener('click', closeFilters);
+    $('#btnApply').addEventListener('click', ()=>{ CUR.page=1; loadList(); closeFilters(); });
+
+    // ---------------- Lookups ----------------
+    async function loadEmployees(sel){
+      const r = await fetch('/frontdesk/api/leaves/employees');
+      const data = await r.json();
+      sel.innerHTML = data.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+    }
+    async function loadTypes(sel){
+      const r = await fetch('/frontdesk/api/leaves/types');
+      const data = await r.json();
+      sel.innerHTML = '<option value=""></option>' + data.map(t=>`<option value="${t}">${t[0].toUpperCase()+t.slice(1)}</option>`).join('');
+    }
+
+    // ---------------- KPI + Metrics ----------------
+    function updateKPIs(items){
+      let pending=0, mapp=0, hr=0, rej=0;
+      for(const it of items){
+        if(it.status==='pending_manager') pending++;
+        else if(it.status==='manager_approved') mapp++;
+        else if(it.status==='hr_confirmed') hr++;
+        else if(it.status==='manager_rejected' || it.status==='hr_rejected') rej++;
+      }
+      $('#kpiPending').textContent = pending;
+      $('#kpiMApproved').textContent = mapp;
+      $('#kpiHR').textContent = hr;
+      $('#kpiRejected').textContent = rej;
+    }
+
+    async function loadMetrics(){
+      const year = $('#metricsYear').value || new Date().getFullYear();
+      const r = await fetch(`/frontdesk/api/leaves/metrics?year=${year}&status=hr_confirmed`);
+      const j = await r.json();
+
+      const labels = j.monthly_totals.map(x=> new Date(2000, x.month-1, 1).toLocaleString(undefined, {month:'short'}));
+      const data = j.monthly_totals.map(x=> x.days);
+
+      // Build chart with resize-stable options
+      if(monthlyChart){ monthlyChart.destroy(); }
+      const ctx = $('#monthlyChart').getContext('2d');
+      monthlyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Days', data }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,     // IMPORTANT
+          resizeDelay: 200,               // debounce ResizeObserver
+          animation: { duration: 350 },
+          plugins: {
+            legend: { display:false },
+            title: { display:false },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: { grid: { display:false } },
+            y: { beginAtZero:true, title:{ display:true, text:'Days' } }
+          }
+        }
+      });
+
+      // Top employees
+      $('#topEmployees').innerHTML = j.top_employees.map(e=>`
+        <tr><td class="text-truncate" title="${e.employee_name}">${e.employee_name}</td>
+            <td class="text-end fw-semibold">${e.days}</td></tr>
+      `).join('') || `<tr><td colspan="2" class="text-center text-muted">No data</td></tr>`;
+    }
+
+    // ---------------- Balances (modal helper) ----------------
+    async function previewBalance(){
+      const emp = $('#emp_id').value;
+      const type = $('#lv_type').value;
+      if(!emp || !type){ $('#balanceBox').classList.add('d-none'); return; }
+      const y = (new Date()).getFullYear();
+      const r = await fetch(`/frontdesk/api/leaves/balances/${emp}?year=${y}`);
+      if(!r.ok){ $('#balanceBox').classList.add('d-none'); return; }
+      const j = await r.json();
+      const b = j.balances[type];
+      const rem = (b.remaining===null) ? '&infin;' : b.remaining;
+      $('#balanceBox').innerHTML = `<strong>${type[0].toUpperCase()+type.slice(1)}:</strong> Entitled ${b.entitled}, Used ${b.used}, Remaining ${rem}`;
+      $('#balanceBox').classList.remove('d-none');
+    }
+
+    // ---------------- List / Filters ----------------
+    function paramsFromFilters(){
+      const p = new URLSearchParams();
+      const q = $('#q').value.trim(); if(q) p.set('q', q);
+      const e = $('#employee').value; if(e) p.set('employee_id', e);
+      const t = $('#type').value; if(t) p.set('type', t);
+      const s = $('#status').value; if(s) p.set('status', s);
+      const st = $('#start').value; if(st) p.set('start', st);
+      const en = $('#end').value; if(en) p.set('end', en);
+      p.set('page', CUR.page);
+      p.set('per', $('#per').value || 25);
+      p.set('sort', $('#sort').value || '-start_date');
+      return p;
+    }
+
+    async function loadList(){
+      const p = paramsFromFilters();
+      const r = await fetch('/frontdesk/api/leaves?'+p.toString());
+      const j = await r.json();
+      CUR.total = j.total; CUR.per = j.per;
+
+      updateKPIs(j.items);
+
+      const rows = $('#rows');
+      rows.innerHTML = j.items.map(it=>{
+        const span = (it.start_date === it.end_date) ? fmtDate(it.start_date) : `${fmtDate(it.start_date)} → ${fmtDate(it.end_date)}`;
+        const badge = badgeFor(it.status);
+        const canMA = (it.status==='pending_manager');
+        const canHR = (it.status==='manager_approved');
+        return `
+          <tr>
+            <td class="fw-semibold">${it.employee_name||'—'}</td>
+            <td><span class="chip">${(it.type||'')[0].toUpperCase()+(it.type||'').slice(1)}</span></td>
+            <td>${span}</td>
+            <td>${it.days||0}</td>
+            <td><span class="badge text-bg-${badge} status-badge">${(it.status||'').replace('_',' ')}</span></td>
+            <td class="text-truncate" style="max-width:260px" title="${it.reason||''}">${it.reason||'—'}</td>
+            <td class="text-end">
+              ${canMA ? `
+                <button class="btn btn-sm btn-outline-primary me-1" data-ma="${it.id}"><i class="bi bi-check2"></i> Manager Approve</button>
+                <button class="btn btn-sm btn-outline-danger me-1" data-mr="${it.id}"><i class="bi bi-x"></i> Reject</button>
+              ` : ''}
+              ${canHR ? `
+                <button class="btn btn-sm btn-success me-1" data-hc="${it.id}"><i class="bi bi-shield-check"></i> HR Confirm</button>
+                <button class="btn btn-sm btn-outline-danger me-1" data-hr="${it.id}"><i class="bi bi-shield-x"></i> HR Reject</button>
+              ` : ''}
+              <button class="btn btn-sm btn-outline-secondary" data-files="${it.id}" title="Attachments"><i class="bi bi-paperclip"></i></button>
+              <button class="btn btn-sm btn-outline-danger" data-del="${it.id}" title="Delete"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>`;
+      }).join('') || `<tr><td colspan="7" class="text-center text-muted py-3">No requests</td></tr>`;
+
+      const first = (CUR.page-1)*CUR.per + 1;
+      const last  = Math.min(CUR.page*CUR.per, CUR.total);
+      $('#meta').textContent = j.total ? `Showing ${first}-${last} of ${CUR.total}` : '—';
+
+      $$('#rows [data-del]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-del');
+        if(!confirm('Delete this request?')) return;
+        await fetch('/frontdesk/api/leaves/'+id, {method:'DELETE'});
+        loadList();
+      }));
+      $$('#rows [data-ma]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-ma');
+        const r = await fetch('/frontdesk/api/leaves/'+id+'/manager_decision', {
+          method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({decision:'approve'})
+        });
+        if(!r.ok){ alert('Unable to approve at manager step'); }
+        loadList();
+      }));
+      $$('#rows [data-mr]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-mr');
+        const r = await fetch('/frontdesk/api/leaves/'+id+'/manager_decision', {
+          method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({decision:'reject'})
+        });
+        if(!r.ok){ alert('Unable to reject at manager step'); }
+        loadList();
+      }));
+      $$('#rows [data-hc]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-hc');
+        const r = await fetch('/frontdesk/api/leaves/'+id+'/hr_decision', {
+          method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({decision:'confirm'})
+        });
+        if(!r.ok){ const t=await r.text(); alert('HR confirm failed: '+t); }
+        loadList();
+      }));
+      $$('#rows [data-hr]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-hr');
+        const r = await fetch('/frontdesk/api/leaves/'+id+'/hr_decision', {
+          method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({decision:'reject'})
+        });
+        if(!r.ok){ alert('HR reject failed'); }
+        loadList();
+      }));
+      $$('#rows [data-files]').forEach(b=> b.addEventListener('click', async e=>{
+        const id = e.currentTarget.getAttribute('data-files');
+        openFilesModal(id);
+      }));
+    }
+
+    // ---------------- New Request ----------------
+    async function createLeave(){
+      const emp = $('#emp_id').value;
+      const type = $('#lv_type').value;
+      const s = $('#lv_start').value;
+      const en = $('#lv_end').value;
+      const reason = $('#reason').value.trim();
+      const manager = $('#manager').value.trim();
+
+      if(!emp || !type || !s || !en){ alert('Fill required fields'); return; }
+
+      const fd = new FormData();
+      fd.append('employee_id', emp);
+      fd.append('type', type);
+      fd.append('start_date', s);
+      fd.append('end_date', en);
+      fd.append('reason', reason);
+      if(manager) fd.append('manager_username', manager);
+      const f = $('#lv_file').files && $('#lv_file').files[0];
+      if(f) fd.append('file', f);
+
+      const res = await fetch('/frontdesk/api/leaves', {method:'POST', body: fd});
+      if(!res.ok){ const t = await res.text(); alert('Failed to create request: '+t); return; }
+      const j = await res.json();
+
+      const box = $('#conflictsBox');
+      if(j.conflicts && j.conflicts.length){
+        const items = j.conflicts.map(x=>`<li>${x.employee_name} · ${x.type} · ${x.start_date} → ${x.end_date} (${x.status})</li>`).join('');
+        box.innerHTML = `<strong>Conflict warning:</strong><ul class="mb-0">${items}</ul>`;
+        box.classList.remove('d-none');
+      } else {
+        box.classList.add('d-none');
+      }
+
+      bootstrap.Modal.getInstance(document.getElementById('newLeaveModal')).hide();
+      $('#leaveForm').reset();
+      loadList();
+    }
+
+    // ---------------- Attachments Modal ----------------
+    async function openFilesModal(leaveId){
+      const r = await fetch(`/frontdesk/api/leaves/${leaveId}/files`);
+      const files = await r.json();
+      const body = files.map(f=>`
+        <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-2">
+          <div>
+            <div class="fw-semibold">${f.filename}</div>
+            <div class="text-muted small">${f.mimetype} · ${new Intl.NumberFormat().format(f.size||0)} bytes · ${new Date(f.uploaded_at).toLocaleString()}</div>
+          </div>
+          <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-secondary" href="/frontdesk/api/leavefiles/${f.meta_id}/download"><i class="bi bi-download"></i></a>
+            <button class="btn btn-sm btn-outline-danger" data-del="${f.meta_id}"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-muted">No files</div>';
+
+      const html = `
+        <div class="modal fade" id="filesModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog"><div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Attachments</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+              <div class="mb-2">
+                <label class="form-label">Upload</label>
+                <input id="fileUp" type="file" class="form-control"/>
+              </div>
+              <div class="d-grid mb-3"><button id="btnUp" class="btn btn-primary">Upload</button></div>
+              <div id="filesArea">${body}</div>
+            </div>
+          </div></div>
+        </div>`;
+      const c = document.createElement('div'); c.innerHTML = html; document.body.appendChild(c);
+      const modalEl = c.querySelector('#filesModal');
+      const modal = new bootstrap.Modal(modalEl);
+
+      c.querySelector('#btnUp').addEventListener('click', async ()=>{
+        const f = c.querySelector('#fileUp').files && c.querySelector('#fileUp').files[0];
+        if(!f) return alert('Choose a file');
+        const fd = new FormData(); fd.append('file', f);
+        const rr = await fetch(`/frontdesk/api/leaves/${leaveId}/files`, {method:'POST', body: fd});
+        if(rr.ok){ modal.hide(); c.remove(); openFilesModal(leaveId); }
+      });
+
+      c.querySelectorAll('[data-del]').forEach(b=> b.addEventListener('click', async e=>{
+        const mid = e.currentTarget.getAttribute('data-del');
+        await fetch('/frontdesk/api/leavefiles/'+mid, {method:'DELETE'});
+        modal.hide(); c.remove(); openFilesModal(leaveId);
+      }));
+
+      modalEl.addEventListener('hidden.bs.modal', ()=> c.remove());
+      modal.show();
+    }
+
+    // ---------------- Wire up ----------------
+    document.addEventListener('DOMContentLoaded', async ()=>{
+      await loadEmployees($('#employee'));
+      await loadEmployees($('#emp_id'));
+      await loadTypes($('#type'));
+      await loadTypes($('#lv_type'));
+
+      $('#metricsYear').value = (new Date()).getFullYear();
+      await loadMetrics();
+
+      $('#btnReloadMetrics').addEventListener('click', loadMetrics);
+      $('#btnCreate').addEventListener('click', createLeave);
+      ['emp_id','lv_type','lv_start','lv_end'].forEach(id=>{
+        $('#'+id).addEventListener('change', previewBalance);
+      });
+
+      loadList();
+    });
+
+    // Pagination
+    $('#prev').addEventListener('click', ()=>{ if(CUR.page>1){ CUR.page--; loadList(); }});
+    $('#next').addEventListener('click', ()=>{ if(CUR.page*CUR.per < CUR.total){ CUR.page++; loadList(); }});
+  </script>
+</body>
+</html>

@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Tasks</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <!-- Bootstrap / jQuery / Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet"/>
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <style>
+    :root{
+      --brand:#0d6efd; --brand-600:#0b5ed7; --ink:#0b2447; --muted:#6b7a99; --bg:#f7f9fc;
+      --card:#ffffff; --line:#edf1f7;
+    }
+    body{ background:var(--bg); }
+    .page-title{ color:var(--brand-600); }
+
+    .quick-add input, .quick-add select { height:40px; }
+    .quick-add .btn{ height:40px; }
+
+    .section{
+      background:var(--card); border:1px solid rgba(13,110,253,.08); border-radius:.85rem; overflow:hidden;
+    }
+    .section + .section{ margin-top:1rem; }
+    .section-head{
+      padding:.75rem 1rem; background:linear-gradient(0deg,#fff,#f5f9ff);
+      display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line);
+    }
+    .section-head h6{ margin:0; font-weight:700; color:#102a43; display:flex; align-items:center; gap:.5rem; }
+    .count-badge{ background:#e7f1ff; color:#0b3c8a; border-radius:999px; padding:.1rem .6rem; font-weight:600; font-size:.8rem; }
+    .collapse-btn{ border:0; background:transparent; color:#0b5ed7; }
+
+    .list{ padding:.25rem; }
+    .task{ border-bottom:1px solid var(--line); padding:.55rem .5rem; display:grid; grid-template-columns: 28px 1fr auto; gap:.5rem; align-items:center; }
+    .task:last-child{ border-bottom:none; }
+    .task-title{ font-weight:600; color:#102a43; }
+    .task-title.done{ text-decoration: line-through; color:#9aa8bc; }
+    .meta{ color:var(--muted); font-size:.82rem; display:flex; flex-wrap:wrap; gap:.35rem .6rem; }
+    .chip{ background:#e9f2ff; color:#0b3c8a; border-radius:999px; padding:.15rem .55rem; font-size:.72rem; }
+    .priority-dot{ width:.55rem; height:.55rem; border-radius:50%; display:inline-block; vertical-align:middle; margin-right:.35rem; }
+    .prio-low{ background:#4caf50; } .prio-normal{ background:#0d6efd; } .prio-high{ background:#ff9800; } .prio-urgent{ background:#dc3545; }
+
+    .task-actions .btn{ padding:.15rem .45rem; }
+    .status-pill{ border-radius:999px; padding:.1rem .5rem; font-size:.72rem; font-weight:600; }
+    .status-todo{ background:#f2f4f7; color:#415a77; }
+    .status-in_progress{ background:#eaf7ff; color:#0b5ed7; }
+    .status-blocked{ background:#fff0f0; color:#b42318; }
+    .status-done{ background:#ecfdf3; color:#027a48; }
+
+    /* Slide-over filter panel */
+    #filterPanel{
+      position:fixed; top:0; right:-380px; width:380px; max-width:92vw; height:100vh; background:#fff;
+      border-left:1px solid rgba(13,110,253,.2); box-shadow:-10px 0 24px rgba(13,110,253,.12);
+      transition:right .25s ease; z-index:1100;
+      display:flex; flex-direction:column;
+    }
+    #filterPanel.open{ right:0; }
+    #filterPanel .head{ padding:.85rem 1rem; border-bottom:1px solid rgba(13,110,253,.15); background:linear-gradient(0deg,#fff,#f4f8ff); display:flex; align-items:center; justify-content:space-between; }
+    #filterPanel .body{ padding:1rem; overflow:auto; }
+    .filter-toggle{ position: fixed; right: 1rem; bottom: 1rem; z-index: 1101; }
+
+    @media (max-width: 768px){
+      .task{ grid-template-columns: 28px 1fr; }
+      .task-actions{ margin-left: 2rem; margin-top:.25rem; }
+    }
+  </style>
+</head>
+<body>
+    {% include 'frontdesk_pages/front_desk_sidebar.html' %}
+  <div class="container-fluid py-3">
+
+    <!-- Header -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <h3 class="m-0 page-title"><i class="bi bi-check2-square me-2"></i>Tasks</h3>
+        <span class="badge text-bg-primary">To-Do</span>
+      </div>
+      <div class="d-flex gap-2">
+        <button id="btnOpenFilters" class="btn btn-outline-primary"><i class="bi bi-funnel"></i> Filters</button>
+      </div>
+    </div>
+
+    <!-- Quick Add -->
+    <div class="card mb-3">
+      <div class="card-body quick-add">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-lg-5">
+            <label class="form-label">Task</label>
+            <input id="qa_title" class="form-control" placeholder="e.g., Call vendor, prepare invoice…">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">Due date</label>
+            <input id="qa_date" type="date" class="form-control">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">Time</label>
+            <input id="qa_time" type="time" class="form-control">
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label">Priority</label>
+            <select id="qa_priority" class="form-select">
+              <option value="normal" selected>Normal</option>
+              <option value="low">Low</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="col-6 col-lg-1 d-grid">
+            <button id="qa_add" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search row (quick) -->
+    <div class="row g-2 mb-2">
+      <div class="col-12 col-lg-6">
+        <div class="input-group">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input id="q" class="form-control" placeholder="Search title, description or label…">
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <select id="sort" class="form-select">
+          <option value="-due_date" selected>Sort: Due (newest)</option>
+          <option value="due_date">Sort: Due (oldest)</option>
+          <option value="-created_at">Sort: Created (newest)</option>
+          <option value="created_at">Sort: Created (oldest)</option>
+          <option value="title">Sort: Title A→Z</option>
+          <option value="-title">Sort: Title Z→A</option>
+        </select>
+      </div>
+      <div class="col-6 col-lg-3">
+        <select id="labelQuick" class="form-select">
+          <option value="">All labels</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <div id="sections">
+
+      <div class="section" id="secOverdue">
+        <div class="section-head">
+          <h6><i class="bi bi-exclamation-triangle text-danger"></i> Overdue <span class="count-badge" id="cntOverdue">0</span></h6>
+          <button class="collapse-btn" data-target="#listOverdue"><i class="bi bi-chevron-up"></i></button>
+        </div>
+        <div class="list" id="listOverdue"></div>
+      </div>
+
+      <div class="section" id="secToday">
+        <div class="section-head">
+          <h6><i class="bi bi-brightness-high-fill text-primary"></i> Today <span class="count-badge" id="cntToday">0</span></h6>
+          <button class="collapse-btn" data-target="#listToday"><i class="bi bi-chevron-up"></i></button>
+        </div>
+        <div class="list" id="listToday"></div>
+      </div>
+
+      <div class="section" id="secUpcoming">
+        <div class="section-head">
+          <h6><i class="bi bi-calendar-event text-info"></i> Upcoming <span class="count-badge" id="cntUpcoming">0</span></h6>
+          <button class="collapse-btn" data-target="#listUpcoming"><i class="bi bi-chevron-up"></i></button>
+        </div>
+        <div class="list" id="listUpcoming"></div>
+      </div>
+
+      <div class="section" id="secCompleted">
+        <div class="section-head">
+          <h6><i class="bi bi-check2-all text-success"></i> Completed <span class="count-badge" id="cntCompleted">0</span></h6>
+          <button class="collapse-btn" data-target="#listCompleted"><i class="bi bi-chevron-up"></i></button>
+        </div>
+        <div class="list" id="listCompleted"></div>
+      </div>
+
+    </div>
+
+    <!-- Empty state -->
+    <div id="emptyState" class="text-center text-muted py-4" style="display:none;">No tasks yet.</div>
+
+  </div>
+
+  <!-- Slide-over Filters -->
+  <div id="filterPanel" aria-hidden="true">
+    <div class="head">
+      <strong><i class="bi bi-funnel me-2"></i>Filters</strong>
+      <button id="btnCloseFilters" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="body">
+      <div class="mb-2">
+        <label class="form-label">Labels</label>
+        <input id="labels" class="form-control" placeholder="comma separated (e.g. finance,urgent)">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Status</label>
+        <select id="status" class="form-select">
+          <option value="">All</option>
+          <option value="todo">To do</option>
+          <option value="in_progress">In progress</option>
+          <option value="blocked">Blocked</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Priority</label>
+        <select id="priority" class="form-select">
+          <option value="">All</option>
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
+      <div class="row g-2">
+        <div class="col-6">
+          <label class="form-label">From</label>
+          <input id="from" type="date" class="form-control">
+        </div>
+        <div class="col-6">
+          <label class="form-label">To</label>
+          <input id="to" type="date" class="form-control">
+        </div>
+      </div>
+      <div class="d-grid mt-3">
+        <button id="btnApplyFilters" class="btn btn-primary"><i class="bi bi-check2"></i> Apply</button>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-primary filter-toggle d-lg-none" id="floatFilters"><i class="bi bi-funnel"></i></button>
+
+  <!-- Edit Modal -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Task</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editForm" class="row g-3">
+          <input type="hidden" id="ed_id">
+          <div class="col-12 col-lg-6">
+            <label class="form-label">Title</label>
+            <input id="ed_title" class="form-control" required>
+          </div>
+          <div class="col-12 col-lg-6">
+            <label class="form-label">Labels <span class="text-muted">(comma separated)</span></label>
+            <input id="ed_labels" class="form-control" placeholder="e.g. finance, urgent">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Priority</label>
+            <select id="ed_priority" class="form-select">
+              <option value="low">Low</option>
+              <option value="normal" selected>Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Status</label>
+            <select id="ed_status" class="form-select">
+              <option value="todo">To do</option>
+              <option value="in_progress">In progress</option>
+              <option value="blocked">Blocked</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Due date</label>
+            <input id="ed_date" type="date" class="form-control">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Time</label>
+            <input id="ed_time" type="time" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Description</label>
+            <textarea id="ed_desc" class="form-control" rows="3" placeholder="Optional"></textarea>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Attachments</label>
+            <div class="d-flex gap-2 align-items-center mb-2">
+              <input id="ed_file" type="file" class="form-control">
+              <button id="ed_upload" type="button" class="btn btn-outline-primary"><i class="bi bi-paperclip"></i> Upload</button>
+            </div>
+            <div id="ed_files" class="small"></div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button id="ed_save" class="btn btn-primary">Save</button>
+      </div>
+    </div></div>
+  </div>
+
+  <script>
+    const $  = (s,el=document)=>el.querySelector(s);
+    const $$ = (s,el=document)=>Array.from(el.querySelectorAll(s));
+
+    // ---------- State ----------
+    let ALL = [];            // full list (from server)
+    let LABELS = new Set();  // for quick label dropdown
+
+    // ---------- Helpers ----------
+    function prioClass(p){ return {low:'prio-low', normal:'prio-normal', high:'prio-high', urgent:'prio-urgent'}[p||'normal'] }
+    function prioDot(p){ return `<span class="priority-dot ${prioClass(p)}"></span>` }
+    function fmtDT(iso){
+      if(!iso) return '<span class="text-muted">No due</span>';
+      const d = new Date(iso); return d.toLocaleString();
+    }
+    function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+    function bucketOf(it){
+      if((it.status||'') === 'done') return 'completed';
+      const now = new Date();
+      const today0 = startOfDay(now);
+      const due = it.due_date ? new Date(it.due_date) : null;
+      if(!due) return 'upcoming'; // no due -> treat as upcoming list
+      const due0 = startOfDay(due);
+      if(due0.getTime() < today0.getTime()) return 'overdue';
+      if(due0.getTime() === today0.getTime()) return 'today';
+      return 'upcoming';
+    }
+
+    function statusPill(st){
+      const cls = 'status-' + (st||'todo');
+      const label = (st||'todo').replace('_',' ');
+      return `<span class="status-pill ${cls}">${label}</span>`;
+    }
+
+    function labelsHTML(arr){
+      return (arr||[]).map(l=>`<span class="chip">${l}</span>`).join('');
+    }
+
+    function taskHTML(it){
+      const checked = it.status==='done' ? 'checked' : '';
+      const titleCls = it.status==='done' ? 'task-title done' : 'task-title';
+      return `
+        <div class="task" data-id="${it.id}">
+          <div><input class="form-check-input toggle" type="checkbox" ${checked} title="Mark as done/undo"></div>
+          <div>
+            <div class="${titleCls}">${prioDot(it.priority)} <span class="t">${it.title||'(untitled)'}</span></div>
+            <div class="meta">
+              <span><i class="bi bi-clock"></i> ${fmtDT(it.due_date)}</span>
+              <span>${statusPill(it.status)}</span>
+              ${labelsHTML(it.labels)}
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-outline-primary btn-sm me-1 edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm del"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>`;
+    }
+
+    function setCounts(){
+      $('#cntOverdue').textContent   = $('#listOverdue').children.length;
+      $('#cntToday').textContent     = $('#listToday').children.length;
+      $('#cntUpcoming').textContent  = $('#listUpcoming').children.length;
+      $('#cntCompleted').textContent = $('#listCompleted').children.length;
+      const any = (+$('#cntOverdue').textContent + +$('#cntToday').textContent + +$('#cntUpcoming').textContent + +$('#cntCompleted').textContent) > 0;
+      $('#emptyState').style.display = any ? 'none' : 'block';
+    }
+
+    function rebuildLabelsDropdown(){
+      LABELS.clear();
+      ALL.forEach(it => (it.labels||[]).forEach(l=>LABELS.add(l)));
+      const sel = $('#labelQuick');
+      sel.innerHTML = `<option value="">All labels</option>` + Array.from(LABELS).sort().map(v=>`<option>${v}</option>`).join('');
+    }
+
+    // ---------- Load & Render ----------
+    async function fetchAll(){
+      // Get many at once; server-side search/sort still applied from quick inputs
+      const p = new URLSearchParams();
+      const q = $('#q').value.trim(); if(q) p.set('q', q);
+      const sort = $('#sort').value; if(sort) p.set('sort', sort);
+      const labelQuick = $('#labelQuick').value; if(labelQuick) p.set('label', labelQuick);
+      p.set('page', 1); p.set('per', 500); // big page to avoid pagination for this view
+      const r = await fetch('/frontdesk/api/tasks?'+p.toString());
+      const j = await r.json();
+      ALL = j.items || [];
+    }
+
+    function applyAdvancedFilters(list){
+      const status = $('#status').value;
+      const priority = $('#priority').value;
+      const labels = $('#labels').value.split(',').map(x=>x.trim()).filter(Boolean);
+      const from = $('#from').value ? new Date($('#from').value) : null;
+      const to   = $('#to').value ? new Date($('#to').value) : null;
+
+      return list.filter(it=>{
+        if(status && it.status !== status) return false;
+        if(priority && it.priority !== priority) return false;
+        if(labels.length && !(it.labels||[]).some(l => labels.includes(l))) return false;
+        if(from || to){
+          if(!it.due_date) return false;
+          const d = new Date(it.due_date);
+          if(from && d < new Date(from.getFullYear(), from.getMonth(), from.getDate())) return false;
+          if(to && d > new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23,59,59)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderAll(){
+      // clear
+      ['listOverdue','listToday','listUpcoming','listCompleted'].forEach(id => { $('#'+id).innerHTML = ''; });
+
+      const items = applyAdvancedFilters(ALL);
+
+      // group & inject
+      items.forEach(it=>{
+        const html = taskHTML(it);
+        const bucket = bucketOf(it);
+        if(bucket==='overdue')   $('#listOverdue').insertAdjacentHTML('beforeend', html);
+        else if(bucket==='today')$('#listToday').insertAdjacentHTML('beforeend', html);
+        else if(bucket==='completed')$('#listCompleted').insertAdjacentHTML('beforeend', html);
+        else $('#listUpcoming').insertAdjacentHTML('beforeend', html);
+      });
+
+      wireListEvents(); // connect events to freshly inserted nodes
+      setCounts();
+    }
+
+    async function loadAndRender(){
+      await fetchAll();
+      rebuildLabelsDropdown();
+      renderAll();
+    }
+
+    // ---------- Optimistic add ----------
+    function buildDueISO(dateStr, timeStr){
+      if(!dateStr && !timeStr) return ''; // server will accept null
+      if(!dateStr){
+        const t = timeStr || '09:00';
+        const today = new Date();
+        const y = today.getFullYear(), m = String(today.getMonth()+1).padStart(2,'0'), d=String(today.getDate()).padStart(2,'0');
+        return `${y}-${m}-${d}T${t}:00`;
+      }
+      const t = timeStr ? `${timeStr}:00` : '17:00:00';
+      return `${dateStr}T${t}`;
+    }
+
+    async function quickAdd(){
+      const title = $('#qa_title').value.trim();
+      if(!title){ $('#qa_title').focus(); return; }
+      const dueISO = buildDueISO($('#qa_date').value, $('#qa_time').value);
+      const priority = $('#qa_priority').value || 'normal';
+
+      // POST
+      const res = await fetch('/frontdesk/api/tasks', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ title, priority, due_date: dueISO || null, status:'todo' })
+      });
+      if(!res.ok){ alert('Could not add task'); return; }
+      const created = await res.json();
+
+      // Clear inputs
+      $('#qa_title').value=''; $('#qa_date').value=''; $('#qa_time').value=''; $('#qa_priority').value='normal';
+
+      // Insert into local state + DOM without full reload
+      ALL.unshift(created);
+      // Respect current filters; if it passes, inject into correct bucket
+      const filtered = applyAdvancedFilters([created]);
+      if(filtered.length){
+        const html = taskHTML(created);
+        const bucket = bucketOf(created);
+        const listId = (bucket==='overdue') ? 'listOverdue' : (bucket==='today') ? 'listToday' : (bucket==='completed') ? 'listCompleted' : 'listUpcoming';
+        $('#'+listId).insertAdjacentHTML('afterbegin', html);
+        wireListEvents($('#'+listId).firstElementChild); // wire just the new row
+        setCounts();
+      } else {
+        // If it doesn't pass current filters, just refresh counts & labels
+        rebuildLabelsDropdown(); setCounts();
+      }
+    }
+
+    // ---------- Edit & actions ----------
+    async function openEdit(id){
+      const it = ALL.find(x=>x.id===id);
+      if(!it){ await loadAndRender(); return; }
+      $('#ed_id').value = it.id;
+      $('#ed_title').value = it.title || '';
+      $('#ed_labels').value = (it.labels||[]).join(', ');
+      $('#ed_priority').value = it.priority || 'normal';
+      $('#ed_status').value = it.status || 'todo';
+      $('#ed_desc').value = it.description || '';
+      if(it.due_date){
+        const d = new Date(it.due_date);
+        $('#ed_date').value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        $('#ed_time').value = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      } else { $('#ed_date').value=''; $('#ed_time').value=''; }
+      await loadFiles(id);
+      new bootstrap.Modal('#editModal').show();
+    }
+
+    async function saveEdit(){
+      const id = $('#ed_id').value;
+      const dueISO = buildDueISO($('#ed_date').value, $('#ed_time').value);
+      const body = {
+        title: $('#ed_title').value.trim(),
+        description: $('#ed_desc').value.trim(),
+        labels: $('#ed_labels').value.split(',').map(x=>x.trim()).filter(Boolean),
+        priority: $('#ed_priority').value,
+        status: $('#ed_status').value,
+        due_date: dueISO || null
+      };
+      const r = await fetch('/frontdesk/api/tasks/'+id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if(!r.ok){ alert('Could not save'); return; }
+      const updated = await r.json();
+      // Update local & DOM
+      const idx = ALL.findIndex(x=>x.id===id);
+      if(idx>-1) ALL[idx] = updated;
+      // re-render buckets (keeps it simple & correct)
+      renderAll();
+      bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    }
+
+    async function deleteTask(id){
+      const ok = confirm('Delete this task?'); if(!ok) return;
+      await fetch('/frontdesk/api/tasks/'+id, {method:'DELETE'});
+      ALL = ALL.filter(x=>x.id!==id);
+      renderAll();
+    }
+
+    async function toggleStatus(id, checked){
+      const st = checked ? 'done' : 'todo';
+      await fetch(`/frontdesk/api/tasks/${id}/status`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status: st})});
+      const it = ALL.find(x=>x.id===id);
+      if(it){ it.status = st; }
+      // Move row between buckets without full fetch:
+      renderAll();
+    }
+
+    // ---------- Files (inside edit modal) ----------
+    async function loadFiles(taskId){
+      const r = await fetch(`/frontdesk/api/tasks/${taskId}/files`);
+      const files = await r.json();
+      $('#ed_files').innerHTML = files.map(f=>`
+        <div class="d-flex justify-content-between border rounded p-2 mb-2">
+          <div>
+            <div class="fw-semibold">${f.filename}</div>
+            <div class="text-muted small">${f.mimetype} · ${new Intl.NumberFormat().format(f.size||0)} bytes · ${new Date(f.uploaded_at).toLocaleString()}</div>
+          </div>
+          <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-secondary" href="/frontdesk/api/taskfiles/${f.meta_id}/download"><i class="bi bi-download"></i></a>
+            <button class="btn btn-sm btn-outline-danger" data-del="${f.meta_id}"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-muted">No attachments</div>';
+
+      $$('#ed_files [data-del]').forEach(b=>{
+        b.addEventListener('click', async (e)=>{
+          const mid = e.currentTarget.getAttribute('data-del');
+          await fetch('/frontdesk/api/taskfiles/'+mid, {method:'DELETE'});
+          loadFiles(taskId);
+        });
+      });
+    }
+    async function uploadFile(){
+      const id = $('#ed_id').value;
+      const f = $('#ed_file').files && $('#ed_file').files[0];
+      if(!f) return alert('Choose a file');
+      const fd = new FormData(); fd.append('file', f);
+      const r = await fetch(`/frontdesk/api/tasks/${id}/files`, {method:'POST', body: fd});
+      if(r.ok){ $('#ed_file').value=''; loadFiles(id); }
+    }
+
+    // ---------- Wiring ----------
+    function wireListEvents(scope){
+      const root = scope || document;
+      // edit
+      $$('.edit', root).forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          const id = e.currentTarget.closest('.task').dataset.id;
+          openEdit(id);
+        });
+      });
+      // delete
+      $$('.del', root).forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+          const id = e.currentTarget.closest('.task').dataset.id;
+          deleteTask(id);
+        });
+      });
+      // toggle
+      $$('.toggle', root).forEach(cb=>{
+        cb.addEventListener('change', (e)=>{
+          const id = e.currentTarget.closest('.task').dataset.id;
+          toggleStatus(id, e.currentTarget.checked);
+        });
+      });
+    }
+
+    // Collapse handlers
+    $$('.collapse-btn').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const tgt = b.getAttribute('data-target');
+        const el = document.querySelector(tgt);
+        if(!el) return;
+        const hidden = el.style.display==='none';
+        el.style.display = hidden ? 'block' : 'none';
+        b.innerHTML = hidden ? '<i class="bi bi-chevron-up"></i>' : '<i class="bi bi-chevron-down"></i>';
+      });
+    });
+
+    // Slide-over filters
+    function openFilters(){ $('#filterPanel').classList.add('open'); $('#filterPanel').setAttribute('aria-hidden','false'); }
+    function closeFilters(){ $('#filterPanel').classList.remove('open'); $('#filterPanel').setAttribute('aria-hidden','true'); }
+    $('#btnOpenFilters').addEventListener('click', openFilters);
+    $('#floatFilters').addEventListener('click', openFilters);
+    $('#btnCloseFilters').addEventListener('click', closeFilters);
+    $('#btnApplyFilters').addEventListener('click', ()=>{ closeFilters(); renderAll(); });
+
+    // Quick search, sort, label dropdown
+    $('#q').addEventListener('input', ()=> loadAndRender());
+    $('#sort').addEventListener('change', ()=> loadAndRender());
+    $('#labelQuick').addEventListener('change', ()=> loadAndRender());
+
+    // Quick add
+    $('#qa_add').addEventListener('click', quickAdd);
+    $('#qa_title').addEventListener('keydown', (e)=>{ if(e.key==='Enter') quickAdd(); });
+
+    // Edit modal buttons
+    $('#ed_save').addEventListener('click', saveEdit);
+    $('#ed_upload').addEventListener('click', uploadFile);
+
+    // Init
+    document.addEventListener('DOMContentLoaded', loadAndRender);
+  </script>
+</body>
+</html>
