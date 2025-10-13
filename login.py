@@ -1,280 +1,273 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Login • Truetype ERP</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from db import users_collection, clients_collection, db
+from werkzeug.security import check_password_hash
+from bson import ObjectId
+from datetime import datetime, timezone
+import urllib.request
+import urllib.parse
+import json
 
-  <!-- Brand favicon (your logo) -->
-  <link rel="icon" type="image/png" href="https://static.wixstatic.com/media/13bf20_85bc952de62849e895a80e274750784b~mv2.png/v1/fill/w_392,h_146,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/13bf20_85bc952de62849e895a80e274750784b~mv2.png"/>
+login_bp = Blueprint('login', __name__, template_folder='templates')
 
-  <!-- Font & Icons -->
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+# New: collection for login logs
+login_logs_collection = db["login_logs"]
 
-  <style>
-    :root{
-      --ink:#0f172a; --muted:#64748b;
-      --primary:#0f4c81;
-      --accent:#22c55e;
-      --card:#ffffff; --bg:#0b1220; --border:#e5e7eb;
+
+def _status(entity, default="active"):
+    return (entity or {}).get("status", default).strip().lower()
+
+
+def _is_active(entity):
+    return _status(entity) == "active"
+
+
+# -------- Helpers for logging --------
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+def _req_ip():
+    """Best-effort client IP extraction (handles proxies)."""
+    xff = request.headers.get("X-Forwarded-For", "") or request.headers.get("X-Real-IP", "")
+    ip = (xff.split(",")[0].strip() if xff else None) or request.remote_addr
+    return ip, xff
+
+def _ua():
+    return request.headers.get("User-Agent", "")
+
+def _ref():
+    return request.referrer or ""
+
+def _pick_headers():
+    wanted = ["User-Agent", "Referer", "Origin", "X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP", "CF-IPCountry"]
+    h = {}
+    for k in wanted:
+        v = request.headers.get(k)
+        if v:
+            h[k] = v
+    return h
+
+def _geo_lookup(ip: str) -> dict:
+    """
+    Best-effort IP geolocation. Tries ipapi.co then ipinfo.io (no key needed for basic demo).
+    If outbound blocked or times out, returns {'source':'none','ok':False}.
+    """
+    def fetch_json(url, timeout=1.2):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8", "ignore"))
+        except Exception:
+            return None
+
+    if not ip:
+        return {"source": "none", "ok": False}
+
+    # ipapi.co
+    j = fetch_json(f"https://ipapi.co/{urllib.parse.quote(ip)}/json/")
+    if j and isinstance(j, dict) and not j.get("error"):
+        return {
+            "source": "ipapi",
+            "ok": True,
+            "ip": ip,
+            "city": j.get("city"),
+            "region": j.get("region"),
+            "country": j.get("country_name") or j.get("country"),
+            "lat": j.get("latitude"),
+            "lon": j.get("longitude"),
+            "org": j.get("org"),
+            "asn": j.get("asn"),
+        }
+
+    # ipinfo.io (free tier may rate-limit)
+    j2 = fetch_json(f"https://ipinfo.io/{urllib.parse.quote(ip)}/json")
+    if j2 and isinstance(j2, dict) and not j2.get("error"):
+        loc = (j2.get("loc") or "").split(",")
+        lat = loc[0] if len(loc) == 2 else None
+        lon = loc[1] if len(loc) == 2 else None
+        return {
+            "source": "ipinfo",
+            "ok": True,
+            "ip": ip,
+            "city": j2.get("city"),
+            "region": j2.get("region"),
+            "country": j2.get("country"),
+            "lat": lat, "lon": lon,
+            "org": j2.get("org"),
+        }
+
+    return {"source": "none", "ok": False, "ip": ip}
+
+def _log_login_attempt(
+    *, kind: str,  # 'admin' | 'assistant' | 'front_desk' | 'client' | 'external' | 'unknown'
+    username_attempted: str,
+    success: bool,
+    reason: str,   # 'ok' | 'blocked' | 'inactive' | 'bad_password' | 'not_found' | 'invalid_credentials'
+    session_user_id: ObjectId | None = None,
+    client_id: ObjectId | None = None,
+    extra: dict | None = None
+):
+    ip, xff = _req_ip()
+    log_doc = {
+        "ts": _now_utc(),
+        "who": {
+            "username": username_attempted,
+            "kind": kind,
+        },
+        "result": {
+            "success": bool(success),
+            "reason": reason,
+        },
+        "req": {
+            "ip": ip,
+            "forwarded_for": xff,
+            "ua": _ua(),
+            "ref": _ref(),
+            "method": request.method,
+            "path": request.path,
+            "headers": _pick_headers(),
+        },
+        "geo": _geo_lookup(ip),
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0; font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      background:
-        radial-gradient(1200px 600px at -10% -20%, #0f4c81 12%, transparent 60%),
-        radial-gradient(1000px 500px at 110% 10%, #22c55e22 10%, transparent 60%),
-        linear-gradient(180deg, #0b1220 0%, #0d172a 100%);
-      color:var(--ink);
-    }
+    if session_user_id:
+        log_doc["session_user_id"] = str(session_user_id)
+    if client_id:
+        log_doc["client_id"] = str(client_id)
+    if extra:
+        log_doc["extra"] = extra
 
-    /* ====== Layout ====== */
-    .auth-wrap{display:grid; grid-template-columns: 1fr; min-height:100vh;}
-    @media (min-width: 992px){ .auth-wrap{grid-template-columns: 540px 1fr;} }
+    try:
+        login_logs_collection.insert_one(log_doc)
+    except Exception:
+        pass
 
-    /* LEFT: Login Card (slides in from left + stagger) */
-    .auth-form{
-      display:flex; align-items:center; justify-content:center; padding:28px;
-      background:linear-gradient(180deg,#ffffff 0%, #f8fafc 100%);
-      position:relative; overflow:hidden; border-right:1px solid #eef2f7;
-      animation: slideInLeft .7s cubic-bezier(.2,.8,.2,1) 0s both;
-    }
-    @keyframes slideInLeft{ from{opacity:0; transform:translateX(-36px)} to{opacity:1; transform:none} }
 
-    .card{
-      width:100%; max-width: 460px; background:var(--card);
-      border:1px solid var(--border); border-radius:16px;
-      box-shadow: 0 20px 60px rgba(2,8,23,.12);
-      padding:26px 22px;
-    }
-    .brand{display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:10px;}
-    .brand img{height:56px; object-fit:contain}
+@login_bp.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
 
-    .tagline{
-      text-align:center; margin:4px 0 4px; font-weight:800; font-size:1.35rem; color:#0f2a44;
-      letter-spacing:.2px;
-      animation: fadeUp .6s ease .1s both;
-    }
-    .subhead{
-      text-align:center; color:var(--muted); margin-bottom:14px; font-size:.98rem;
-      animation: fadeUp .6s ease .18s both;
-    }
-    .headline{
-      text-align:center; color:#0f2a44; font-weight:700; margin:6px 0 12px; font-size:1.15rem;
-      opacity:.9; letter-spacing:.2px;
-      animation: fadeUp .6s ease .26s both;
-    }
-    @keyframes fadeUp{from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none}}
+        # Clear previous session early
+        session.clear()
 
-    .form-group{position:relative; margin:16px 0; opacity:0; transform:translateY(14px);}
-    .form-group:nth-of-type(1){animation:fadeUp .5s ease .34s both}
-    .form-group:nth-of-type(2){animation:fadeUp .5s ease .44s both}
+        # === Admin / Assistant / Front Desk Login ===
+        user = users_collection.find_one({"username": username})
 
-    .input{
-      width:100%; padding:12px 42px 12px 12px; border:1px solid #d7dde5; border-radius:12px;
-      font-size:15px; outline:none; background:#fff; transition:border .2s, box-shadow .2s;
-    }
-    .input:focus{border-color:#93c5fd; box-shadow:0 0 0 3px #93c5fd55}
-    .fg-icon{position:absolute; right:12px; top:50%; transform:translateY(-50%); color:#475569; cursor:pointer;}
+        if user:
+            pw_ok = check_password_hash(user.get("password", "") or "", password)
+            if pw_ok:
+                # Blocked/Inactive gate for ALL staff roles
+                if not _is_active(user):
+                    s = _status(user)
+                    if s == "blocked":
+                        _log_login_attempt(kind=(user.get('role') or 'admin'),
+                                           username_attempted=username,
+                                           success=False, reason="blocked",
+                                           session_user_id=user.get("_id"))
+                        flash("Your account is blocked. Contact an administrator.", "danger")
+                    else:
+                        _log_login_attempt(kind=(user.get('role') or 'admin'),
+                                           username_attempted=username,
+                                           success=False, reason="inactive",
+                                           session_user_id=user.get("_id"))
+                        flash("Your account is inactive. Contact an administrator.", "warning")
+                    return redirect(url_for('login.login'))
 
-    .utility{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:6px 0 14px; font-size:.9rem; color:#334155; opacity:0; transform:translateY(12px); animation:fadeUp .5s ease .54s both;}
-    .link{color:#0f4c81; text-decoration:none}
-    .link:hover{text-decoration:underline}
+                # Success
+                role_from_db = (user.get('role') or 'assistant').strip().lower()
+                session['username'] = username
+                session['role'] = role_from_db
+                session['name'] = user.get("name", "User")
 
-    .btn{
-      width:100%; border:0; border-radius:12px; padding:12px 14px; font-weight:600; cursor:pointer;
-      background:linear-gradient(90deg, var(--primary) 0%, #09385f 100%); color:#fff;
-      box-shadow:0 12px 30px rgba(15,76,129,.28); transition: transform .15s ease;
-      display:flex; align-items:center; justify-content:center; gap:10px;
-      opacity:0; transform:translateY(10px); animation:fadeUp .5s ease .64s both;
-    }
-    .btn:hover{transform:translateY(-1px)}
-    .spinner{width:18px; height:18px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin .75s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
+                _log_login_attempt(kind=session['role'], username_attempted=username,
+                                   success=True, reason="ok",
+                                   session_user_id=user.get("_id"))
 
-    .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:12px; font-size:.78rem; color:#0f2a44; opacity:0; transform:translateY(10px); animation:fadeUp .5s ease .74s both;}
-    .kpi-box{background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px; padding:10px; text-align:center;}
-    .kpi-big{font-weight:800; font-size:1.05rem}
+                # Route by role
+                if role_from_db == 'admin':
+                    return redirect(url_for('admin_dashboard.dashboard'))
+                elif role_from_db == 'assistant':
+                    return redirect(url_for('assistant_dashboard.dashboard'))
+                elif role_from_db in ('front_desk', 'frontdesk'):
+                    return redirect(url_for('frontdesk_dashboard_bp.dashboard'))
+                else:
+                    _log_login_attempt(kind='unknown', username_attempted=username,
+                                       success=False, reason="unauthorized_role",
+                                       session_user_id=user.get("_id"))
+                    flash("Unauthorized role.", "warning")
+                    session.clear()
+                    return redirect(url_for('login.login'))
+            else:
+                # Wrong password for existing staff user
+                _log_login_attempt(kind=(user.get('role') or 'admin'),
+                                   username_attempted=username,
+                                   success=False, reason="bad_password",
+                                   session_user_id=user.get("_id"))
+                # Keep trying client paths below
 
-    .flash{margin:8px 0; text-align:center; color:#b91c1c; font-size:.92rem}
-    .card.error{border:1px solid #ef4444; animation:shake .4s ease-in-out}
-    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}100%{transform:none}}
+        # === Registered Client Login (client_id + phone as password) ===
+        client = clients_collection.find_one({"client_id": username})
+        if client:
+            if (client.get("phone") or "") == password:
+                s = _status(client)
+                if s != "active":
+                    if s == "blocked":
+                        _log_login_attempt(kind='client', username_attempted=username,
+                                           success=False, reason="blocked", client_id=client.get("_id"))
+                        flash("Your client account is blocked. Please contact support.", "danger")
+                    else:
+                        _log_login_attempt(kind='client', username_attempted=username,
+                                           success=False, reason="inactive", client_id=client.get("_id"))
+                        flash("Your client account is inactive. Please contact support.", "warning")
+                    return redirect(url_for('login.login'))
 
-    /* RIGHT: Image & Narrative (uses your Shutterstock image with fallback) */
-    .auth-hero{
-      position:relative; padding:42px; display:flex; align-items:center; justify-content:center; overflow:hidden; color:#e2e8f0;
-    }
-    @media (max-width: 991px){ .auth-hero{display:none} }
+                # Success (client)
+                session['role'] = 'client'
+                session['client_id'] = str(client['_id'])
+                session['client_code'] = client.get('client_id')
+                session['client_name'] = client.get('name')
 
-    .hero-photo{
-      position:absolute; inset:0; z-index:0; overflow:hidden;
-    }
-    .hero-photo img{
-      width:100%; height:100%; object-fit:cover;
-      filter:saturate(1.05) contrast(1.02) brightness(.95);
-      transform:scale(1.04);
-      animation: zoomSlow 22s ease-in-out infinite alternate;
-    }
-    @keyframes zoomSlow{from{transform:scale(1.04)} to{transform:scale(1.12)}}
+                _log_login_attempt(kind='client', username_attempted=username,
+                                   success=True, reason="ok", client_id=client.get("_id"))
+                return redirect(url_for('client_dashboard.dashboard'))
+            else:
+                _log_login_attempt(kind='client', username_attempted=username,
+                                   success=False, reason="bad_password", client_id=client.get("_id"))
 
-    .hero-overlay{
-      position:absolute; inset:0; z-index:1;
-      background:linear-gradient(180deg, rgba(2,6,23,.55), rgba(2,6,23,.85));
-    }
+        # === External Client Login (name + phone) ===
+        external = clients_collection.find_one({
+            "name": {"$regex": f"^{username}$", "$options": "i"},
+            "phone": password
+        })
+        if external:
+            s = _status(external)
+            if s == "blocked":
+                _log_login_attempt(kind='external', username_attempted=username,
+                                   success=False, reason="blocked", client_id=external.get("_id"))
+                flash("Your external account is blocked. Please contact support.", "danger")
+                return redirect(url_for('login.login'))
+            if s == "inactive":
+                _log_login_attempt(kind='external', username_attempted=username,
+                                   success=False, reason="inactive", client_id=external.get("_id"))
+                flash("Your external account is inactive. Please contact support.", "warning")
+                return redirect(url_for('login.login'))
 
-    .hero-fg{
-      position:relative; z-index:2; max-width: 950px;
-      display:grid; grid-template-columns: 1.2fr .8fr; gap:26px; align-items:center;
-    }
-    .big-title{font-weight:800; font-size:2.2rem; line-height:1.15}
-    .lead{color:#cbd5e1; margin:10px 0 14px}
-    .bullets{list-style:none; padding:0; margin:0}
-    .bullets li{display:flex; align-items:flex-start; gap:10px; margin:8px 0}
-    .bullets i{color:#86efac; margin-top:2px}
+            if s == "external":
+                session['role'] = 'external'
+                session['external_id'] = str(external['_id'])
+                session['external_name'] = external.get('name')
+                session['external_phone'] = external.get('phone')
 
-    .panel{
-      background:rgba(15,31,57,.55); border:1px solid rgba(255,255,255,.14);
-      border-radius:16px; padding:18px; backdrop-filter: blur(6px);
-      box-shadow: 0 20px 60px rgba(2,8,23,.35);
-      animation: fadeUp .9s ease .15s both;
-    }
-    .thumbs{display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;}
-    .thumb{position:relative; border-radius:12px; overflow:hidden; height:120px; border:1px solid rgba(255,255,255,.18)}
-    .thumb img{width:100%; height:100%; object-fit:cover; transform:scale(1.05); transition:transform .8s}
-    .thumb:hover img{transform:scale(1.12)}
-    .badge-soft{position:absolute; left:10px; top:10px; background:rgba(34,197,94,.15); color:#ecfdf5; border:1px solid rgba(34,197,94,.35); padding:.2rem .5rem; border-radius:999px; font-size:.75rem}
-  </style>
-</head>
-<body>
-  <div class="auth-wrap">
-    <!-- LEFT: LOGIN -->
-    <section class="auth-form">
-      <div class="card" id="card">
-        <div class="brand">
-          <img src="https://static.wixstatic.com/media/13bf20_85bc952de62849e895a80e274750784b~mv2.png/v1/fill/w_392,h_146,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/13bf20_85bc952de62849e895a80e274750784b~mv2.png" alt="Truetype" />
-        </div>
+                _log_login_attempt(kind='external', username_attempted=username,
+                                   success=True, reason="ok", client_id=external.get("_id"))
+                return redirect(url_for('external.external_dashboard'))
 
-        <!-- Quote & sub -->
-        <div class="tagline">Driving Innovation, Fueling Growth</div>
-        <div class="subhead">Trusted Oil &amp; Gas Advisory • Documentation • Allocations &amp; Liftings • Reconciliation</div>
+        # If no match at all
+        _log_login_attempt(kind='unknown', username_attempted=username,
+                           success=False, reason="invalid_credentials",
+                           extra={"entered_password_len": len(password)})
+        flash("Invalid credentials", "danger")
+        return redirect(url_for('login.login'))
 
-        <div class="headline">Secure Login</div>
-
-        <!-- Flash messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <script>
-              window.addEventListener('DOMContentLoaded', ()=>{ document.getElementById('card')?.classList.add('error'); });
-            </script>
-            {% for category, message in messages %}
-              <div class="flash">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
-        <!-- FORM -->
-        <form method="POST" action="{{ url_for('login.login') }}" onsubmit="return showSpinner()">
-          <div class="form-group">
-            <input class="input" type="text" name="username" required autocomplete="username" inputmode="text" placeholder="Username / Client ID" />
-            <i class="bi bi-person fg-icon" aria-hidden="true"></i>
-          </div>
-          <div class="form-group">
-            <input class="input" type="password" name="password" id="password" required autocomplete="current-password" placeholder="Password" />
-            <i class="bi bi-eye fg-icon" id="toggle" role="button" aria-label="Toggle password"></i>
-          </div>
-
-          <div class="utility">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" name="remember" value="1" style="accent-color:#0f4c81;"> Remember me
-            </label>
-            <a class="link" href="#" onclick="event.preventDefault(); alert('Contact your admin to reset password.');">Forgot password?</a>
-          </div>
-
-          <button class="btn" id="loginButton" type="submit">
-            <span class="button-text">Login</span>
-            <span class="spinner" id="spinner" style="display:none;"></span>
-          </button>
-
-          <div style="text-align:center;margin-top:12px;font-size:.9rem">
-            <a class="link" href="/">← Back to website</a>
-          </div>
-
-          <div class="kpis">
-            <div class="kpi-box"><div class="kpi-big">24/7</div>Ops Visibility</div>
-            <div class="kpi-box"><div class="kpi-big">100%</div>Docs Traceable</div>
-            <div class="kpi-box"><div class="kpi-big">ISO</div>Aligned Controls</div>
-          </div>
-        </form>
-      </div>
-    </section>
-
-    <!-- RIGHT: O&G Advisory narrative + images -->
-    <aside class="auth-hero">
-      <!-- Your requested Shutterstock image with a graceful fallback -->
-      <div class="hero-photo">
-        <img
-          src="https://www.shutterstock.com/image-photo/handshake-business-oil-contract-worker-260nw-2360980001.jpg"
-          alt="Oil & Gas Advisory handshake"
-          loading="eager"
-          referrerpolicy="no-referrer"
-          onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1509395176047-4a66953fd231?q=80&w=2000&auto=format&fit=crop';">
-      </div>
-      <div class="hero-overlay" aria-hidden="true"></div>
-
-      <div class="hero-fg">
-        <div>
-          <h2 class="big-title">Oil &amp; Gas Advisory<br/>with discipline &amp; speed</h2>
-          <p class="lead">Execute transactions with confidence — from KYC and documentation to allocations, liftings, invoicing, and reconciliations — all in one ERP.</p>
-          <ul class="bullets">
-            <li><i class="bi bi-shield-check"></i> KYC/AML records &amp; approval workflows</li>
-            <li><i class="bi bi-diagram-3"></i> Deal pipeline, allocations, liftings, &amp; demurrage logs</li>
-            <li><i class="bi bi-file-earmark-text"></i> Pro-forma, invoices, receipts &amp; audit trails</li>
-          </ul>
-        </div>
-
-        
-
-  <script>
-    // Toggle password visibility
-    (function(){
-      const pwd = document.getElementById('password');
-      const tgl = document.getElementById('toggle');
-      if(tgl){
-        tgl.addEventListener('click', ()=>{
-          const vis = pwd.type === 'password' ? 'text' : 'password';
-          pwd.type = vis;
-          tgl.classList.toggle('bi-eye');
-          tgl.classList.toggle('bi-eye-slash');
-        });
-        tgl.classList.add('bi-eye');
-      }
-    })();
-
-    // Submit spinner
-    function showSpinner(){
-      const btn = document.getElementById('loginButton');
-      const spin = document.getElementById('spinner');
-      const text = btn.querySelector('.button-text');
-      btn.disabled = true; spin.style.display='inline-block'; text.textContent='Checking...';
-      return true;
-    }
-
-    // Reset spinner on load (if previous login failed and page reloaded)
-    window.addEventListener('load', ()=>{
-      const btn = document.getElementById('loginButton');
-      const spin = document.getElementById('spinner');
-      const text = btn?.querySelector('.button-text');
-      if(btn && spin && text){ btn.disabled=false; spin.style.display='none'; text.textContent='Login'; }
-    });
-  </script>
-  <script>
-  window.cbConfig = {
-    chatId: "255228db-274b-4670-9fab-cad8e2da3546"
-  };
-</script>
-<script src="https://app.chatbit.co/embed.min.js" defer></script>
-</body>
-</html>
+    # GET
+    return render_template('login.html')
