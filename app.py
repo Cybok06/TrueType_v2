@@ -30,6 +30,8 @@ from navbar import navbar_bp
 from users import users_bp
 from taxes import taxes_bp
 from prices_bp import prices_bp
+from frontdesk.leaves import leaves_bp
+
 
 
 
@@ -49,6 +51,21 @@ from login_logs import login_logs_bp
 from taxes_history import taxes_hist_bp
 
 
+#aLICE iMPORTS 
+from frontdesk.frontdesk_dashboard import frontdesk_dashboard_bp
+from frontdesk.meetings import meetings_bp
+from frontdesk.admin_meetings import admin_meetings_bp
+from frontdesk.hris_employees import hris_employees_bp
+from frontdesk.documents import documents_bp
+from frontdesk.tasks import tasks_bp
+
+
+from frontdesk.frontdesk_navbar import frontdesk_navbar_bp
+
+
+
+
+
 # === Initialize App ===
 app = Flask(__name__)
 app.secret_key = '4b1b26eee81fd7da3be8efd2649c3b07140b511118b11009f243adabd4d61559'  # 🔐 put in env in production
@@ -65,9 +82,11 @@ def index_alias():
     return render_template("index.html")
 
 # === Blueprint Registration ===
+app.register_blueprint(frontdesk_dashboard_bp)   # <-- add this
 
 # Auth/Login — mount on a prefix to avoid capturing '/'
 app.register_blueprint(login_bp, url_prefix="/auth")
+app.register_blueprint(tasks_bp)
 
 # Shared Features
 app.register_blueprint(home_bp)
@@ -97,6 +116,13 @@ app.register_blueprint(users_bp)
 app.register_blueprint(login_logs_bp)
 app.register_blueprint(taxes_bp)
 app.register_blueprint(taxes_hist_bp)
+app.register_blueprint(meetings_bp)
+app.register_blueprint(admin_meetings_bp)
+app.register_blueprint(hris_employees_bp)
+app.register_blueprint(documents_bp)
+app.register_blueprint(leaves_bp)
+app.register_blueprint(frontdesk_navbar_bp)
+
 
 
 
