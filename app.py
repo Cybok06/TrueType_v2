@@ -1,5 +1,5 @@
-# app.py
-#from flask import Flask, redirect, url_for, session, render_template  # ⬅️ render_template added
+"""# app.py
+from flask import Flask, redirect, url_for, session, render_template  # ⬅️ render_template added
 
 # === Auth/Login ===
 from login import login_bp
@@ -156,3 +156,5 @@ def logout():
 if __name__ == "__main__":
     app.run(debug=True)
 
+
+"""
