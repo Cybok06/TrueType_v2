@@ -1,4 +1,4 @@
-"""# app.py
+# app.py
 from flask import Flask, redirect, url_for, session, render_template  # ⬅️ render_template added
 
 # === Auth/Login ===
@@ -157,4 +157,4 @@ if __name__ == "__main__":
     app.run(debug=True)
 
 
-"""
+
