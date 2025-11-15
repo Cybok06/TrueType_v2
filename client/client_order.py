@@ -7,26 +7,24 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 
 client_order_bp = Blueprint('client_order', __name__, template_folder='templates')
 
-orders_collection          = db["orders"]
-products_collection        = db["products"]
-trucks_collection          = db["trucks"]
-truck_orders_collection    = db["truck_orders"]
-truck_numbers_collection   = db["truck_numbers"]
+orders_collection        = db["orders"]
+products_collection      = db["products"]
+trucks_collection        = db["trucks"]
+truck_orders_collection  = db["truck_orders"]
+truck_numbers_collection = db["truck_numbers"]
 
 # --------------------------
 # Indexes (make idempotent)
 # --------------------------
 def ensure_indexes():
-    # Orders: unique order_id
     try:
         orders_collection.create_index("order_id", unique=True, sparse=True, background=True)
     except Exception:
         pass
 
-    # Truck numbers: (per-client recent address book)
+    # Truck numbers (per-client recent address book)
     try:
         info = truck_numbers_collection.index_information()
-        # Drop any legacy UNIQUE index on only vehicle_number_norm
         for name, spec in info.items():
             keys = spec.get("key") or spec.get("key_pattern") or []
             if isinstance(keys, dict):
@@ -58,19 +56,22 @@ def ensure_indexes():
     except OperationFailure:
         pass
 
-    # Trucks: helpful lookups (not unique; plates may collide across sources)
+    # Trucks: helpful lookups
     try:
         trucks_collection.create_index([("truck_number", 1)], name="truck_number_idx", background=True)
         trucks_collection.create_index([("truck_number_norm", 1)], name="truck_number_norm_idx", background=True)
     except Exception:
         pass
 
+
 ensure_indexes()
+
 
 def _to_int_qty(q):
     if not q:
         return None
     return int(str(q).replace(",", "").strip())
+
 
 def _maybe_oid(val):
     try:
@@ -78,15 +79,19 @@ def _maybe_oid(val):
     except Exception:
         return val
 
+
 def _generate_order_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+
 
 def _norm_plate(s: str) -> str:
     if not s:
         return ""
     return re.sub(r"[^A-Za-z0-9]", "", s).upper()
 
+
 _VALID_ORDER_TYPES = {"s_tax", "s_bdc", "combo"}
+
 
 @client_order_bp.route('/submit_order', methods=['GET', 'POST'])
 def submit_order():
@@ -103,7 +108,7 @@ def submit_order():
         driver_phone   = (request.form.get('driver_phone') or "").strip()
         order_type     = (request.form.get('order_type') or '').strip().lower()
 
-        # ✅ Hire Truck selection comes as the truck's _id
+        # Hire Truck selection comes as the truck's _id (as string)
         truck_id_raw   = (request.form.get('truck_id') or "").strip()
         is_hire_truck  = bool(truck_id_raw)
 
@@ -111,6 +116,7 @@ def submit_order():
         if not all([product, quantity, region, vehicle_number, driver_name, driver_phone, order_type]):
             flash("All fields are required.", "danger")
             return redirect(url_for('client_order.submit_order'))
+
         if order_type not in _VALID_ORDER_TYPES:
             flash("Invalid order type selected.", "danger")
             return redirect(url_for('client_order.submit_order'))
@@ -122,11 +128,10 @@ def submit_order():
             if isinstance(tid, ObjectId):
                 truck = trucks_collection.find_one({"_id": tid})
             if truck is None:
-                # Degrade gracefully: treat as no hired truck
                 is_hire_truck = False
                 flash("Selected hire truck could not be verified. Order recorded without a hired truck.", "warning")
 
-        # Snapshot product pricing/taxes (internal)
+        # Snapshot product pricing/taxes
         prod_doc = products_collection.find_one(
             {"name": Regex(f"^{re.escape(product)}$", "i")},
             {"s_price": 1, "p_price": 1, "s_tax": 1, "p_tax": 1, "name": 1}
@@ -139,7 +144,7 @@ def submit_order():
         client_oid = _maybe_oid(session['client_id'])
         vehicle_number_norm = _norm_plate(vehicle_number)
 
-        # Base order (always created)
+        # Base order
         base_order = {
             "client_id": client_oid,
             "product": product,
@@ -155,10 +160,8 @@ def submit_order():
             "product_p_price": snapshot_p_price,
             "product_s_tax":   snapshot_s_tax,
             "product_p_tax":   snapshot_p_tax,
-
-            # Audit flags
             "hired_truck": bool(is_hire_truck),
-            "truck_verified": bool(truck),  # true only if hire truck exists by _id
+            "truck_verified": bool(truck),
             "truck_number_norm": vehicle_number_norm
         }
         if truck:
@@ -174,9 +177,9 @@ def submit_order():
                 order_mongo_id = result.inserted_id
                 break
             except DuplicateKeyError:
-                continue  # retry on rare collision
+                continue
 
-        # ---------- Create truck_orders ONLY when hire truck was selected and verified ----------
+        # Create truck_orders ONLY when hire truck was selected and verified
         if truck:
             trk_driver_name  = (truck.get("driver_name") or driver_name or "").strip()
             trk_driver_phone = (truck.get("driver_phone") or driver_phone or "").strip()
@@ -210,7 +213,6 @@ def submit_order():
             "updated_at": datetime.utcnow(),
         }
 
-        # Retry once on DuplicateKeyError for concurrent upserts
         for _ in range(2):
             try:
                 truck_numbers_collection.update_one(
@@ -225,15 +227,33 @@ def submit_order():
 
         return redirect(url_for('client_order.submit_order'))
 
-    # ----- GET: include per-client RECENT TRUCKS + all trucks for select -----
+    # ---------- GET: include per-client RECENT TRUCKS + all trucks ----------
     products = list(products_collection.find({}, {"name": 1, "description": 1}))
-    # Include _id so the form can post truck_id when selecting a Hire Truck
-    trucks   = list(trucks_collection.find({}, {"truck_number": 1, "capacity": 1, "driver_name": 1, "driver_phone": 1}))
     cid = _maybe_oid(session['client_id'])
 
+    # Normalize trucks: convert _id to string and only expose clean values
+    trucks = []
+    for t in trucks_collection.find({}, {"truck_number": 1, "capacity": 1, "driver_name": 1, "driver_phone": 1}):
+        trucks.append({
+            "id": str(t.get("_id")),
+            "truck_number": t.get("truck_number", ""),
+            "capacity": t.get("capacity", ""),
+            "driver_name": t.get("driver_name", ""),
+            "driver_phone": t.get("driver_phone", "")
+        })
+
+    # Recent trucks
     recents_cursor = truck_numbers_collection.find(
         {"client_id": cid},
-        {"_id": 0, "vehicle_number": 1, "destination": 1, "driver_name": 1, "driver_phone": 1, "vehicle_number_norm": 1, "updated_at": 1}
+        {
+            "_id": 0,
+            "vehicle_number": 1,
+            "destination": 1,
+            "driver_name": 1,
+            "driver_phone": 1,
+            "vehicle_number_norm": 1,
+            "updated_at": 1
+        }
     ).sort("updated_at", -1).limit(100)
 
     seen = set()
@@ -252,26 +272,9 @@ def submit_order():
         if len(recent_trucks) >= 20:
             break
 
-    return render_template('client/client_order.html',
-                           products=products, trucks=trucks, recent_trucks=recent_trucks)
-
-# ----------------------------
-# (Optional) ONE-TIME CLEANUP
-# ----------------------------
-# from pymongo import DESCENDING
-# def dedupe_truck_numbers():
-#     pipeline = [
-#         {"$group": {
-#             "_id": {"client_id": "$client_id", "vehicle_number_norm": "$vehicle_number_norm"},
-#             "ids": {"$push": {"_id": "$._id", "updated_at": "$updated_at"}},
-#             "count": {"$sum": 1}
-#         }},
-#         {"$match": {"count": {"$gt": 1}}}
-#     ]
-#     for g in truck_numbers_collection.aggregate(pipeline):
-#         docs = sorted(g["ids"], key=lambda d: d.get("updated_at") or datetime.min, reverse=True)
-#         keep = docs[0]["_id"]
-#         remove_ids = [d["_id"] for d in docs[1:]]
-#         if remove_ids:
-#             truck_numbers_collection.delete_many({"_id": {"$in": remove_ids}})
-#     ensure_indexes()
+    return render_template(
+        'client/client_order.html',
+        products=products,
+        trucks=trucks,
+        recent_trucks=recent_trucks
+    )
