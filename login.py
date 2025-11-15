@@ -25,26 +25,39 @@ def _is_active(entity):
 def _now_utc():
     return datetime.now(timezone.utc)
 
+
 def _req_ip():
     """Best-effort client IP extraction (handles proxies)."""
     xff = request.headers.get("X-Forwarded-For", "") or request.headers.get("X-Real-IP", "")
     ip = (xff.split(",")[0].strip() if xff else None) or request.remote_addr
     return ip, xff
 
+
 def _ua():
     return request.headers.get("User-Agent", "")
+
 
 def _ref():
     return request.referrer or ""
 
+
 def _pick_headers():
-    wanted = ["User-Agent", "Referer", "Origin", "X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP", "CF-IPCountry"]
+    wanted = [
+        "User-Agent",
+        "Referer",
+        "Origin",
+        "X-Forwarded-For",
+        "X-Real-IP",
+        "CF-Connecting-IP",
+        "CF-IPCountry",
+    ]
     h = {}
     for k in wanted:
         v = request.headers.get(k)
         if v:
             h[k] = v
     return h
+
 
 def _geo_lookup(ip: str) -> dict:
     """
@@ -91,17 +104,20 @@ def _geo_lookup(ip: str) -> dict:
             "city": j2.get("city"),
             "region": j2.get("region"),
             "country": j2.get("country"),
-            "lat": lat, "lon": lon,
+            "lat": lat,
+            "lon": lon,
             "org": j2.get("org"),
         }
 
     return {"source": "none", "ok": False, "ip": ip}
 
+
 def _log_login_attempt(
-    *, kind: str,  # 'admin' | 'assistant' | 'front_desk' | 'client' | 'external' | 'unknown'
+    *,
+    kind: str,  # 'admin' | 'assistant' | 'front_desk' | 'client' | 'external' | 'unknown' | 'accounting'
     username_attempted: str,
     success: bool,
-    reason: str,   # 'ok' | 'blocked' | 'inactive' | 'bad_password' | 'not_found' | 'invalid_credentials'
+    reason: str,   # 'ok' | 'blocked' | 'inactive' | 'bad_password' | 'not_found' | 'invalid_credentials' | 'unauthorized_role'
     session_user_id: ObjectId | None = None,
     client_id: ObjectId | None = None,
     extra: dict | None = None
@@ -138,6 +154,7 @@ def _log_login_attempt(
     try:
         login_logs_collection.insert_one(log_doc)
     except Exception:
+        # Logging must never break login
         pass
 
 
@@ -150,7 +167,7 @@ def login():
         # Clear previous session early
         session.clear()
 
-        # === Admin / Assistant / Front Desk Login ===
+        # === Staff Login (admin / assistant / front_desk / accounting / etc.) ===
         user = users_collection.find_one({"username": username})
 
         if user:
@@ -160,16 +177,22 @@ def login():
                 if not _is_active(user):
                     s = _status(user)
                     if s == "blocked":
-                        _log_login_attempt(kind=(user.get('role') or 'admin'),
-                                           username_attempted=username,
-                                           success=False, reason="blocked",
-                                           session_user_id=user.get("_id"))
+                        _log_login_attempt(
+                            kind=(user.get('role') or 'admin'),
+                            username_attempted=username,
+                            success=False,
+                            reason="blocked",
+                            session_user_id=user.get("_id"),
+                        )
                         flash("Your account is blocked. Contact an administrator.", "danger")
                     else:
-                        _log_login_attempt(kind=(user.get('role') or 'admin'),
-                                           username_attempted=username,
-                                           success=False, reason="inactive",
-                                           session_user_id=user.get("_id"))
+                        _log_login_attempt(
+                            kind=(user.get('role') or 'admin'),
+                            username_attempted=username,
+                            success=False,
+                            reason="inactive",
+                            session_user_id=user.get("_id"),
+                        )
                         flash("Your account is inactive. Contact an administrator.", "warning")
                     return redirect(url_for('login.login'))
 
@@ -177,32 +200,51 @@ def login():
                 role_from_db = (user.get('role') or 'assistant').strip().lower()
                 session['username'] = username
                 session['role'] = role_from_db
-                session['name'] = user.get("name", "User")
+                session['name'] = user.get("name", user.get("username", "User"))
 
-                _log_login_attempt(kind=session['role'], username_attempted=username,
-                                   success=True, reason="ok",
-                                   session_user_id=user.get("_id"))
+                _log_login_attempt(
+                    kind=session['role'],
+                    username_attempted=username,
+                    success=True,
+                    reason="ok",
+                    session_user_id=user.get("_id"),
+                )
 
                 # Route by role
                 if role_from_db == 'admin':
                     return redirect(url_for('admin_dashboard.dashboard'))
+
                 elif role_from_db == 'assistant':
                     return redirect(url_for('assistant_dashboard.dashboard'))
+
                 elif role_from_db in ('front_desk', 'frontdesk'):
                     return redirect(url_for('frontdesk_dashboard_bp.dashboard'))
+
+                elif role_from_db == 'accounting':
+                    # New: accounting role goes to TRUEtype Accounting Dashboard
+                    return redirect(url_for('acc_dashboard.accounting_dashboard'))
+
                 else:
-                    _log_login_attempt(kind='unknown', username_attempted=username,
-                                       success=False, reason="unauthorized_role",
-                                       session_user_id=user.get("_id"))
+                    _log_login_attempt(
+                        kind='unknown',
+                        username_attempted=username,
+                        success=False,
+                        reason="unauthorized_role",
+                        session_user_id=user.get("_id"),
+                        extra={"role_from_db": role_from_db},
+                    )
                     flash("Unauthorized role.", "warning")
                     session.clear()
                     return redirect(url_for('login.login'))
             else:
                 # Wrong password for existing staff user
-                _log_login_attempt(kind=(user.get('role') or 'admin'),
-                                   username_attempted=username,
-                                   success=False, reason="bad_password",
-                                   session_user_id=user.get("_id"))
+                _log_login_attempt(
+                    kind=(user.get('role') or 'admin'),
+                    username_attempted=username,
+                    success=False,
+                    reason="bad_password",
+                    session_user_id=user.get("_id"),
+                )
                 # Keep trying client paths below
 
         # === Registered Client Login (client_id + phone as password) ===
@@ -212,12 +254,22 @@ def login():
                 s = _status(client)
                 if s != "active":
                     if s == "blocked":
-                        _log_login_attempt(kind='client', username_attempted=username,
-                                           success=False, reason="blocked", client_id=client.get("_id"))
+                        _log_login_attempt(
+                            kind='client',
+                            username_attempted=username,
+                            success=False,
+                            reason="blocked",
+                            client_id=client.get("_id"),
+                        )
                         flash("Your client account is blocked. Please contact support.", "danger")
                     else:
-                        _log_login_attempt(kind='client', username_attempted=username,
-                                           success=False, reason="inactive", client_id=client.get("_id"))
+                        _log_login_attempt(
+                            kind='client',
+                            username_attempted=username,
+                            success=False,
+                            reason="inactive",
+                            client_id=client.get("_id"),
+                        )
                         flash("Your client account is inactive. Please contact support.", "warning")
                     return redirect(url_for('login.login'))
 
@@ -227,28 +279,49 @@ def login():
                 session['client_code'] = client.get('client_id')
                 session['client_name'] = client.get('name')
 
-                _log_login_attempt(kind='client', username_attempted=username,
-                                   success=True, reason="ok", client_id=client.get("_id"))
+                _log_login_attempt(
+                    kind='client',
+                    username_attempted=username,
+                    success=True,
+                    reason="ok",
+                    client_id=client.get("_id"),
+                )
                 return redirect(url_for('client_dashboard.dashboard'))
             else:
-                _log_login_attempt(kind='client', username_attempted=username,
-                                   success=False, reason="bad_password", client_id=client.get("_id"))
+                _log_login_attempt(
+                    kind='client',
+                    username_attempted=username,
+                    success=False,
+                    reason="bad_password",
+                    client_id=client.get("_id"),
+                )
 
         # === External Client Login (name + phone) ===
         external = clients_collection.find_one({
             "name": {"$regex": f"^{username}$", "$options": "i"},
-            "phone": password
+            "phone": password,
         })
         if external:
             s = _status(external)
             if s == "blocked":
-                _log_login_attempt(kind='external', username_attempted=username,
-                                   success=False, reason="blocked", client_id=external.get("_id"))
+                _log_login_attempt(
+                    kind='external',
+                    username_attempted=username,
+                    success=False,
+                    reason="blocked",
+                    client_id=external.get("_id"),
+                )
                 flash("Your external account is blocked. Please contact support.", "danger")
                 return redirect(url_for('login.login'))
+
             if s == "inactive":
-                _log_login_attempt(kind='external', username_attempted=username,
-                                   success=False, reason="inactive", client_id=external.get("_id"))
+                _log_login_attempt(
+                    kind='external',
+                    username_attempted=username,
+                    success=False,
+                    reason="inactive",
+                    client_id=external.get("_id"),
+                )
                 flash("Your external account is inactive. Please contact support.", "warning")
                 return redirect(url_for('login.login'))
 
@@ -258,14 +331,23 @@ def login():
                 session['external_name'] = external.get('name')
                 session['external_phone'] = external.get('phone')
 
-                _log_login_attempt(kind='external', username_attempted=username,
-                                   success=True, reason="ok", client_id=external.get("_id"))
+                _log_login_attempt(
+                    kind='external',
+                    username_attempted=username,
+                    success=True,
+                    reason="ok",
+                    client_id=external.get("_id"),
+                )
                 return redirect(url_for('external.external_dashboard'))
 
         # If no match at all
-        _log_login_attempt(kind='unknown', username_attempted=username,
-                           success=False, reason="invalid_credentials",
-                           extra={"entered_password_len": len(password)})
+        _log_login_attempt(
+            kind='unknown',
+            username_attempted=username,
+            success=False,
+            reason="invalid_credentials",
+            extra={"entered_password_len": len(password)},
+        )
         flash("Invalid credentials", "danger")
         return redirect(url_for('login.login'))
 
