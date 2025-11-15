@@ -26,7 +26,6 @@
     .back-link i { margin-right: 6px; }
     .alert { font-size: .95rem; }
 
-    /* Autocomplete dropdown */
     .ac-wrap { position: relative; }
     .ac-list {
       position: absolute;
@@ -61,15 +60,40 @@
       animation: pulse 1.2s infinite linear;
     }
     @keyframes pulse { to { background-position: -200% 0; } }
-
     @media (max-width: 575.98px){
       .ac-list { max-height: 60vh; }
+    }
+
+    .submit-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1055;
+      backdrop-filter: blur(2px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    .submit-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    #overlayCheck {
+      transform: scale(0.8);
+      opacity: 0;
+      transition: all 0.3s ease;
+    }
+    #overlayCheck.show {
+      transform: scale(1);
+      opacity: 1;
     }
   </style>
 </head>
 <body>
 
-<!-- Navbar -->
 <nav class="navbar navbar-light bg-white shadow-sm px-3">
   <a class="navbar-brand d-flex align-items-center" href="#">
     <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Logo">
@@ -77,7 +101,6 @@
   </a>
 </nav>
 
-<!-- Main Content -->
 <div class="container">
   <div class="form-container">
     <a href="/client/dashboard" class="back-link"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
@@ -94,7 +117,7 @@
     <form method="POST" autocomplete="off">
       <div class="row g-3">
 
-        <!-- Product (names only; no prices shown) -->
+        <!-- Product -->
         <div class="col-md-6">
           <label class="form-label">Product</label>
           <select class="form-select" name="product" id="productSelect" required>
@@ -136,28 +159,27 @@
           </select>
         </div>
 
-        <!-- Hire Truck (admin pool, optional) -->
+        <!-- Hire Truck -->
         <div class="col-md-12">
           <label class="form-label">Hire Truck (Optional)</label>
-          <!-- IMPORTANT: name="truck_id" so backend knows a hire truck was chosen -->
           <select class="form-select" id="truck_selector" name="truck_id">
             <option value="">-- Select Available Truck (Optional) --</option>
             {% for truck in trucks %}
               <option
-                value="{{ truck._id }}"                       <!-- posts _id -->
-                data-number="{{ truck.truck_number }}"         <!-- for autofill -->
+                value="{{ truck.id }}"
+                data-number="{{ truck.truck_number }}"
                 data-driver="{{ truck.driver_name }}"
                 data-phone="{{ truck.driver_phone }}"
                 data-capacity="{{ truck.capacity }}"
               >
-                {{ truck.truck_number }} - {{ truck.driver_name }} ({{ truck.capacity }}L)
+                {{ truck.truck_number }}{% if truck.driver_name %} — {{ truck.driver_name }}{% endif %}{% if truck.capacity %} ({{ truck.capacity }}L){% endif %}
               </option>
             {% endfor %}
           </select>
           <small class="text-muted">If you don’t pick a truck here, no truck order will be created.</small>
         </div>
 
-        <!-- Recent Trucks (per client) -->
+        <!-- Recent Trucks -->
         <div class="col-md-12">
           <label class="form-label">Recent Trucks</label>
           <select id="recent_trucks" class="form-select">
@@ -176,7 +198,7 @@
           <small class="text-muted">Pick a saved truck to auto-fill details.</small>
         </div>
 
-        <!-- Vehicle Number + Autocomplete (still supported) -->
+        <!-- Vehicle / Destination / Driver -->
         <div class="col-md-6">
           <label class="form-label">Vehicle Number</label>
           <div class="ac-wrap">
@@ -235,7 +257,10 @@
     const prior = qtySel.querySelector('option[data-dyn="1"]');
     if (prior) prior.remove();
     const has = Array.from(qtySel.options).some(o => o.value === capStr);
-    if (has){ qtySel.value = capStr; return; }
+    if (has){
+      qtySel.value = capStr;
+      return;
+    }
     const label = cap.toLocaleString() + ' (from truck)';
     const opt = new Option(label, capStr, true, true);
     opt.setAttribute('data-dyn', '1');
@@ -245,17 +270,14 @@
   truckSel.addEventListener('change', function(){
     const opt = this.options[this.selectedIndex];
     if (!opt || !opt.value){
-      // Cleared hire truck selection
       vehicleEl.value = '';
       driverEl.value  = '';
       phoneEl.value   = '';
-      // don't touch region, user may have typed it already
       qtySel.value    = '';
       const prior = qtySel.querySelector('option[data-dyn="1"]');
       if (prior) prior.remove();
       return;
     }
-    // NOTE: value is the truck _id (posted as truck_id). Use data-* for autofill
     vehicleEl.value = opt.getAttribute('data-number') || '';
     driverEl.value  = opt.getAttribute('data-driver') || '';
     phoneEl.value   = opt.getAttribute('data-phone')  || '';
@@ -271,14 +293,13 @@
     regionEl.value  = opt.getAttribute('data-destination') || regionEl.value;
     driverEl.value  = opt.getAttribute('data-driver') || driverEl.value;
     phoneEl.value   = opt.getAttribute('data-phone') || phoneEl.value;
-    // Optional focus progression
     document.getElementById('quantity')?.focus();
   });
 
-  // ---------- Vehicle Number Autocomplete (truck_numbers) ----------
+  // ---------- Vehicle Number Autocomplete ----------
   const acList = document.getElementById('ac-list');
   let acItems = [];
-  let acIndex = -1; // keyboard highlight
+  let acIndex = -1;
   let acAbort = null;
   let debounceTimer = null;
 
@@ -293,7 +314,6 @@
     vehicleEl.setAttribute('aria-expanded', 'false');
     acIndex = -1;
   }
-
   function setLoading(state){
     vehicleEl.classList.toggle('is-loading', !!state);
   }
@@ -329,14 +349,13 @@
       const dname = it.driver_name ? ` • ${it.driver_name}` : '';
       const dphone = it.driver_phone ? ` • ${it.driver_phone}` : '';
       meta.textContent = `${dest}${dname}${dphone}`.replace(/^ • /,'');
-
       textWrap.appendChild(title);
       textWrap.appendChild(meta);
 
       row.appendChild(icon);
       row.appendChild(textWrap);
       row.addEventListener('mousedown', (e) => {
-        e.preventDefault(); // avoid blur hiding list too early
+        e.preventDefault();
         chooseItem(idx);
       });
 
@@ -369,7 +388,7 @@
     return (...args) => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => fn(...args), wait);
-    }
+    };
   }
 
   async function fetchSuggest(q){
@@ -417,7 +436,6 @@
 
   vehicleEl.addEventListener('blur', async () => {
     setTimeout(hideList, 100);
-    // On blur, attempt a direct lookup to auto-fill if exact plate exists
     const plate = vehicleEl.value.trim();
     if (!plate) return;
 
@@ -438,9 +456,9 @@
   vehicleEl.addEventListener('keydown', (e) => {
     const visible = acList.style.display === 'block';
     if (!visible) return;
-
     const rows = acList.querySelectorAll('.ac-item');
     const max = rows.length - 1;
+
     if (e.key === 'ArrowDown'){
       e.preventDefault();
       acIndex = Math.min(max, acIndex + 1);
@@ -458,75 +476,21 @@
     }
   });
 
-  // Optional: simple phone normalization (keeps digits and +)
   phoneEl.addEventListener('blur', () => {
     const raw = phoneEl.value || '';
     const cleaned = raw.replace(/[^\d+]/g, '');
     phoneEl.value = cleaned;
   });
 
-  // No pricing logic/UI included intentionally
-</script>
-<!-- Reusable Loading Overlay -->
-<div id="loadingOverlay" class="submit-overlay">
-  <div class="submit-card text-center">
-    <!-- Spinner -->
-    <div id="overlaySpinner" class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;">
-      <span class="visually-hidden">Loading...</span>
-    </div>
-    <!-- Success checkmark -->
-    <div id="overlayCheck" class="d-none text-success" style="font-size:3rem;">
-      <i class="bi bi-check-circle-fill"></i>
-    </div>
-
-    <!-- Message -->
-    <div id="overlayMessage" class="mt-3 fw-semibold text-primary">Submitting your order...</div>
-    <small id="overlayHint" class="text-muted d-block mt-2">Please wait...</small>
-  </div>
-</div>
-
-<style>
-  /* Smooth overlay transitions */
-  .submit-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(15,23,42,.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1055;
-    backdrop-filter: blur(2px);
-
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
-  }
-  .submit-overlay.show {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  /* Small pop animation for checkmark */
-  #overlayCheck {
-    transform: scale(0.8);
-    opacity: 0;
-    transition: all 0.3s ease;
-  }
-  #overlayCheck.show {
-    transform: scale(1);
-    opacity: 1;
-  }
-</style>
-
-<script>
+  // -------- Overlay for submit --------
   const overlay = document.getElementById("loadingOverlay");
   const overlaySpinner = document.getElementById("overlaySpinner");
   const overlayCheck = document.getElementById("overlayCheck");
   const overlayMessage = document.getElementById("overlayMessage");
   const overlayHint = document.getElementById("overlayHint");
   const submitBtn = document.querySelector("form button[type=submit]");
+  const form = document.querySelector("form");
 
-  // Show overlay for order/payment
   function showOverlay(type = "order") {
     overlay.classList.add("show");
     overlaySpinner.classList.remove("d-none");
@@ -538,9 +502,7 @@
       overlayMessage.textContent = "Submitting your order...";
       overlayMessage.className = "mt-3 fw-semibold text-primary";
       overlayHint.textContent = "Please wait while we process your request.";
-    }
-
-    if (type === "payment") {
+    } else if (type === "payment") {
       overlaySpinner.className = "spinner-border text-success";
       overlayMessage.textContent = "Processing Payment...";
       overlayMessage.className = "mt-3 fw-semibold text-success";
@@ -548,46 +510,35 @@
     }
   }
 
-  // Show success state (replaces spinner with checkmark)
-  function showSuccess(message = "Payment Successful!") {
-    overlaySpinner.classList.add("d-none");
-    overlayCheck.classList.remove("d-none");
-    setTimeout(() => overlayCheck.classList.add("show"), 10); // trigger animation
-
-    overlayMessage.textContent = message;
-    overlayMessage.className = "mt-3 fw-semibold text-success";
-    overlayHint.textContent = "Redirecting...";
-    
-    // Auto-hide after 2s
-    setTimeout(() => hideOverlay(), 2000);
-  }
-
-  // Hide overlay
   function hideOverlay() {
     overlay.classList.remove("show");
   }
 
-  // Attach to form submit (order submission)
-  const form = document.querySelector("form");
   form.addEventListener("submit", () => {
     showOverlay("order");
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
   });
 
-  // Reset overlay if page reloads with errors
   window.addEventListener("pageshow", () => {
     hideOverlay();
     submitBtn.disabled = false;
-    submitBtn.innerHTML = "Submit Order";
+    submitBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Submit Order';
   });
-
-  // Example: trigger payment success manually
-  // document.getElementById("payBtn").addEventListener("click", () => {
-  //   showOverlay("payment");
-  //   setTimeout(() => { showSuccess("Payment Successful!"); }, 3000);
-  // });
 </script>
+
+<div id="loadingOverlay" class="submit-overlay">
+  <div class="submit-card text-center">
+    <div id="overlaySpinner" class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <div id="overlayCheck" class="d-none text-success" style="font-size:3rem;">
+      <i class="bi bi-check-circle-fill"></i>
+    </div>
+    <div id="overlayMessage" class="mt-3 fw-semibold text-primary">Submitting your order...</div>
+    <small id="overlayHint" class="text-muted d-block mt-2">Please wait...</small>
+  </div>
+</div>
 
 </body>
 </html>
