@@ -1,5 +1,5 @@
-# app.py
-from flask import Flask, redirect, url_for, session, render_template  # ⬅️ render_template added
+from flask import Flask, redirect, url_for, session, render_template
+import os
 
 # === Auth/Login ===
 from login import login_bp
@@ -19,7 +19,7 @@ from shareholders import shareholders_bp
 from tax import tax_bp
 from manage_deliveries import manage_deliveries_bp
 from products import products_bp
-from bank_accounts import bank_accounts_bp
+from bank_accounts import bank_accounts_bp  # legacy/general bank accounts (non-accounting)
 from truck import truck_bp
 from truck_debtors import truck_debtors_bp
 from admin_truck_payments import admin_truck_payments_bp
@@ -32,14 +32,29 @@ from taxes import taxes_bp
 from prices_bp import prices_bp
 from frontdesk.leaves import leaves_bp
 
-
-
+# === Accounting (separate blueprints) ===
+from accounting_routes.accounts import accounting_bp               # Chart of Accounts, etc.
+from accounting_routes.journals import journals_bp                 # Journal list/new/create
+from accounting_routes.ledger import ledger_bp                     # General Ledger
+from accounting_routes.customers import customers_bp               # AR Customers
+from accounting_routes.ar_invoices import ar_invoices_bp as ar_invoices
+from accounting_routes.ar_payments import ar_payments_bp as ar_payments
+from accounting_routes.ar_aging import ar_aging_bp                 # AR Aging
+from accounting_routes.ap_bills import ap_bills_bp as ap_bills     # AP Bills
+from accounting_routes.bank_accounts import bank_accounts_bp as acc_bank_accounts_bp  # Accounting Bank Accounts
+from accounting_routes.bank_recon import bank_recon_bp             # Bank Reconciliation
+from accounting_routes.fixed_assets import fixed_assets_bp         # Fixed Assets Register
+from accounting_routes.payroll_calculator import acc_payroll_calc
+from accounting_routes.expenses import acc_expenses
+from accounting_routes.balance_sheet import acc_balance_sheet
+from accounting_routes.dashboard import acc_dashboard
+from accounting_routes.profile import acc_profile
 
 # === Admin Features ===
 from admin.admin_dashboard import admin_dashboard_bp
 from admin.settings import admin_settings_bp
 
-# === Assistant Features ===
+# === Assistant / Reports ===
 from reports import reports_bp
 
 # === Client Features ===
@@ -50,43 +65,47 @@ from client.client_payment import client_payment_bp
 from login_logs import login_logs_bp
 from taxes_history import taxes_hist_bp
 
-
-#aLICE iMPORTS 
+# === Frontdesk (Alice) ===
 from frontdesk.frontdesk_dashboard import frontdesk_dashboard_bp
 from frontdesk.meetings import meetings_bp
 from frontdesk.admin_meetings import admin_meetings_bp
 from frontdesk.hris_employees import hris_employees_bp
 from frontdesk.documents import documents_bp
 from frontdesk.tasks import tasks_bp
-
-
 from frontdesk.frontdesk_navbar import frontdesk_navbar_bp
-
-
-
-
 
 # === Initialize App ===
 app = Flask(__name__)
-app.secret_key = '4b1b26eee81fd7da3be8efd2649c3b07140b511118b11009f243adabd4d61559'  # 🔐 put in env in production
+app.secret_key = os.getenv(
+    "FLASK_SECRET_KEY",
+    "4b1b26eee81fd7da3be8efd2649c3b07140b511118b11009f243adabd4d61559"
+)
 
 # === Root / Index ===
 @app.route("/")
 def index():
-    # Make sure templates/index.html exists
     return render_template("index.html")
 
-# (Optional) nice alias if you want /index to work too
+
 @app.route("/index")
 def index_alias():
     return render_template("index.html")
 
+
 # === Blueprint Registration ===
-app.register_blueprint(frontdesk_dashboard_bp)   # <-- add this
+
+# Frontdesk
+app.register_blueprint(frontdesk_dashboard_bp)
+app.register_blueprint(frontdesk_navbar_bp)
+app.register_blueprint(tasks_bp)
+app.register_blueprint(meetings_bp)
+app.register_blueprint(admin_meetings_bp)
+app.register_blueprint(hris_employees_bp)
+app.register_blueprint(documents_bp)
+app.register_blueprint(leaves_bp)
 
 # Auth/Login — mount on a prefix to avoid capturing '/'
 app.register_blueprint(login_bp, url_prefix="/auth")
-app.register_blueprint(tasks_bp)
 
 # Shared Features
 app.register_blueprint(home_bp)
@@ -102,49 +121,74 @@ app.register_blueprint(shareholders_bp)
 app.register_blueprint(tax_bp)
 app.register_blueprint(manage_deliveries_bp)
 app.register_blueprint(products_bp)
-app.register_blueprint(bank_accounts_bp)
 app.register_blueprint(truck_bp)
 app.register_blueprint(truck_debtors_bp)
 app.register_blueprint(admin_truck_payments_bp)
-app.register_blueprint(bank_profile_bp)
+app.register_blueprint(bank_profile_bp)  # general bank profile screens
 app.register_blueprint(reports_bp)
 app.register_blueprint(shared_bp)
 app.register_blueprint(omc_bp)
-app.register_blueprint(cancel_bp)  # routes like /orders/cancel/...
+app.register_blueprint(cancel_bp)   # routes like /orders/cancel/...
 app.register_blueprint(navbar_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(login_logs_bp)
 app.register_blueprint(taxes_bp)
 app.register_blueprint(taxes_hist_bp)
-app.register_blueprint(meetings_bp)
-app.register_blueprint(admin_meetings_bp)
-app.register_blueprint(hris_employees_bp)
-app.register_blueprint(documents_bp)
-app.register_blueprint(leaves_bp)
-app.register_blueprint(frontdesk_navbar_bp)
+app.register_blueprint(prices_bp)
+app.register_blueprint(bank_accounts_bp)  # general/legacy bank accounts routes (non-accounting)
 
+# Accounting (all under /accounting)
+app.register_blueprint(ledger_bp,        url_prefix="/accounting")             # /accounting/ledger
+app.register_blueprint(customers_bp,     url_prefix="/accounting")             # /accounting/customers
+app.register_blueprint(ar_invoices,      url_prefix="/accounting")             # /accounting/ar/invoices
+app.register_blueprint(ar_payments,      url_prefix="/accounting")             # /accounting/ar/payments
+app.register_blueprint(ar_aging_bp,      url_prefix="/accounting")             # /accounting/ar/aging
+app.register_blueprint(ap_bills,         url_prefix="/accounting")             # /accounting/ap/bills
+app.register_blueprint(acc_payroll_calc, url_prefix="/accounting")
+app.register_blueprint(
+    acc_balance_sheet,
+    url_prefix="/accounting",
+    name="acc_balance_sheet"
+)
+# Accounting bank accounts – unique blueprint name at registration
+app.register_blueprint(
+    acc_bank_accounts_bp,
+    url_prefix="/accounting",
+    name="acc_bank_accounts"
+)  # /accounting/bank-accounts
+# Accounting dashboard (under /accounting)
+app.register_blueprint(
+    acc_dashboard,
+    url_prefix="/accounting",  # => /accounting/dashboard
+)
+app.register_blueprint(bank_recon_bp,    url_prefix="/accounting")             # /accounting/bank-recon/<id>
+app.register_blueprint(accounting_bp,    url_prefix="/accounting")             # /accounting/accounts, etc.
+app.register_blueprint(journals_bp,      url_prefix="/accounting")             # /accounting/journals, ...
+app.register_blueprint(acc_profile)
 
-
+# ✅ Fixed Assets mounted under /accounting/fixed-assets
+app.register_blueprint(
+    fixed_assets_bp,
+    url_prefix="/accounting/fixed-assets"
+)  # /accounting/fixed-assets/
 
 # Admin
 app.register_blueprint(admin_dashboard_bp, url_prefix="/admin")
 app.register_blueprint(admin_settings_bp)
 
-# Assistant (removed)
-
 # Client
-app.register_blueprint(client_dashboard_bp, url_prefix="/client")
-app.register_blueprint(client_order_bp, url_prefix="/client")
-app.register_blueprint(client_order_history_bp, url_prefix="/client")
-app.register_blueprint(client_payment_bp, url_prefix="/client")
-app.register_blueprint(prices_bp)
+app.register_blueprint(client_dashboard_bp,      url_prefix="/client")
+app.register_blueprint(client_order_bp,          url_prefix="/client")
+app.register_blueprint(client_order_history_bp,  url_prefix="/client")
+app.register_blueprint(client_payment_bp,        url_prefix="/client")
+app.register_blueprint(acc_expenses)
 
 
 # === Login shortcuts (optional) ===
 @app.route("/login")
 def login_shortcut():
-    # keeps old links working; adjust endpoint if your login view name differs
     return redirect(url_for("login.login"))
+
 
 # === Logout Route ===
 @app.route("/logout")
@@ -152,9 +196,7 @@ def logout():
     session.clear()
     return redirect(url_for("login.login"))
 
+
 # === Run App ===
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-
