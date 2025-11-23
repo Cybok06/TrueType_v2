@@ -14,12 +14,86 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
 
   <style>
-    .badge-blink { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; font-size:.7rem; line-height:1; border-radius:999px; animation:blink .9s linear infinite; box-shadow:0 0 .35rem rgba(220,53,69,.6); }
+    .badge-blink {
+      display:inline-flex; align-items:center; justify-content:center;
+      min-width:18px; height:18px; font-size:.7rem; line-height:1;
+      border-radius:999px; animation:blink .9s linear infinite;
+      box-shadow:0 0 .35rem rgba(220,53,69,.6);
+    }
     @keyframes blink { 50% { opacity:.25 } }
 
     .submenu { overflow:hidden; max-height:0; transition:max-height .28s ease; pointer-events:none; }
     .submenu.open { pointer-events:auto; }
     .sidebar .dropdown-toggle { cursor:pointer; user-select:none; }
+
+    /* 🔥 Highlighted Accounting button at bottom */
+    .sidebar-link-accounting {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0.35rem 0 0.85rem;
+      border-radius: 999px;
+      padding: 0.6rem 1rem;
+      background: linear-gradient(135deg, #0d6efd, #6610f2);
+      color: #fff !important;
+      font-weight: 600;
+      letter-spacing: .03em;
+      box-shadow: 0 0.35rem 0.9rem rgba(13,110,253,.45);
+      text-transform: uppercase;
+      font-size: 0.86rem;
+    }
+    .sidebar-link-accounting i {
+      font-size: 1rem;
+    }
+
+    /* ⭐ Gold “NEW” badge on Accounting button */
+    .sidebar-link-accounting-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #facc15, #eab308);
+      color: #78350f;
+      border: 1px solid rgba(250,204,21,.9);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .sidebar-link-accounting:hover {
+      text-decoration: none;
+      transform: translateY(-1px);
+      box-shadow: 0 0.6rem 1.4rem rgba(13,110,253,.6);
+    }
+
+    /* ⭐ Gold “NEW” badge for Generate Report link */
+    .badge-new-pill {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:0.1rem 0.5rem;
+      border-radius:999px;
+      background:linear-gradient(135deg,#facc15,#eab308);
+      color:#78350f;
+      font-size:.65rem;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      box-shadow:0 0 .4rem rgba(250,204,21,.65);
+    }
+
+    /* ⭐ Gold tooltip style for NEW items */
+    .tooltip-new .tooltip-inner {
+      background-color: #facc15;
+      color: #111827;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .tooltip-new .tooltip-arrow::before {
+      border-top-color: #facc15 !important;
+      border-bottom-color: #facc15 !important;
+    }
   </style>
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/assistant_dashboard.css') }}">
@@ -140,16 +214,28 @@
       </a>
     {% endif %}
 
+    {# ⭐ NEW: GENERATE REPORT link with gold tooltip #}
+    {% if SUPER or ('reports:trading' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center"
+   data-url="{{ url_for('admin_reports.trading_report') }}"
+   data-bs-toggle="tooltip"
+   data-bs-placement="right"
+   data-bs-custom-class="tooltip-new"
+   title="New – Generate consolidated trading report">
+  <span>
+    <i class="bi bi-graph-up-arrow me-2"></i>GENERATE REPORT
+  </span>
+  <span class="badge-new-pill">NEW</span>
+</a>
+
+    {% endif %}
+
     {# DEBTORS LIST #}
     {% if SUPER or ('debtors:list' in ALLOWED) %}
       <a class="sidebar-link d-flex justify-content-between align-items-center" data-url="/debtors/list">
         <span><i class="bi bi-table me-2"></i>DEBTORS LIST</span>
       </a>
     {% endif %}
-
-    
-
-   
 
     {# TAX-OMC #}
     {% if SUPER or ('tax:view' in ALLOWED) %}
@@ -172,7 +258,6 @@
       </a>
     {% endif %}
 
-   
     {# TRUCK MANAGEMENT #}
     {% set show_truck =
       SUPER or ('trucks:manage' in ALLOWED) or ('trucks:payments' in ALLOWED) or ('trucks:debtors' in ALLOWED)
@@ -206,12 +291,34 @@
       </div>
     {% endif %}
 
-
     {# SETTINGS #}
     {% if SUPER or ('settings:view' in ALLOWED) %}
       <a class="sidebar-link" data-url="/admin/settings">
         <i class="bi bi-gear-fill me-2"></i>SETTINGS
       </a>
+    {% endif %}
+
+    {# 🔥 ACCOUNTING – pinned & highlighted at the bottom (with NEW tooltip) #}
+    {% set show_accounting = SUPER or ('accounting:dashboard' in ALLOWED) %}
+    {% if show_accounting %}
+      <div class="mt-2 px-3">
+        <a class="sidebar-link sidebar-link-accounting"
+           href="/accounting/dashboard"
+           target="_blank"
+           rel="noopener"
+           data-bs-toggle="tooltip"
+           data-bs-placement="right"
+           data-bs-custom-class="tooltip-new"
+           title="New – Accounting workspace">
+          <span>
+            <i class="bi bi-calculator-fill me-2"></i>
+            ACCOUNTING
+          </span>
+          <span class="sidebar-link-accounting-badge">
+            NEW
+          </span>
+        </a>
+      </div>
     {% endif %}
 
     <hr class="text-light mx-3" />
@@ -220,7 +327,6 @@
 
   <!-- Main Content -->
   <div class="main-content" id="main-content">
-   
     <div id="content-area">
       <div class="d-flex align-items-center text-muted">
         <div class="spinner-border text-secondary me-2" role="status" aria-hidden="true"></div>
@@ -382,5 +488,3 @@
   <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
 </body>
 </html>
-
-
