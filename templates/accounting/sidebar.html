@@ -1,27 +1,29 @@
 {# URL helpers #}
-{% set url_journals_list = url_for('journals.journals') %}
-{% set url_journal_new   = url_for('journals.journal_new') %}
-{% set url_accounts      = url_for('accounting.accounts') %}
-{% set url_ledger        = url_for('ledger.ledger') %}
-{% set url_customers     = url_for('customers.customers') %}
-{% set url_ar_invoices   = url_for('ar_invoices.invoices') %}
-{% set url_ar_payments   = url_for('ar_payments.payments') %}
-{% set url_ar_aging      = url_for('ar_aging.aging_report') %}
-{% set url_ap_bills      = url_for('ap_bills.bills') %}
+{% set url_journals_list      = url_for('journals.journals') %}
+{% set url_journal_new        = url_for('journals.journal_new') %}
+{% set url_accounts           = url_for('accounting.accounts') %}
+{% set url_ledger             = url_for('ledger.ledger') %}
+{% set url_customers          = url_for('customers.customers') %}
+{% set url_ar_invoices        = url_for('ar_invoices.invoices') %}
+{% set url_ar_payments        = url_for('ar_payments.payments') %}
+{% set url_ar_aging           = url_for('ar_aging.aging_report') %}
+{% set url_ap_bills           = url_for('ap_bills.bills') %}
 {# 👇 use the alias name from app.register_blueprint(name="acc_bank_accounts") #}
-{% set url_bank_accounts = url_for('acc_bank_accounts.list_accounts') %}
-{% set url_bank_recon    = url_for('bank_recon.bank_recon_index') %}
-{% set url_fixed_assets  = url_for('fixed_assets.register') %}
+{% set url_bank_accounts      = url_for('acc_bank_accounts.list_accounts') %}
+{% set url_bank_recon         = url_for('bank_recon.bank_recon_index') %}
+{% set url_fixed_assets       = url_for('fixed_assets.register') %}
 {# Payroll calculator (Blueprint: acc_payroll_calc) #}
-{% set url_payroll_calc  = url_for('acc_payroll_calc.payroll_calculator') %}
+{% set url_payroll_calc       = url_for('acc_payroll_calc.payroll_calculator') %}
 {# Expense tracker (Blueprint: acc_expenses) #}
-{% set url_expenses      = url_for('acc_expenses.expenses_page') %}
+{% set url_expenses           = url_for('acc_expenses.expenses_page') %}
 {# Balance Sheet (Blueprint: acc_balance_sheet) #}
-{% set url_balance_sheet = url_for('acc_balance_sheet.balance_sheet_page') %}
+{% set url_balance_sheet      = url_for('acc_balance_sheet.balance_sheet_page') %}
 {# Accounting Overview Dashboard (Blueprint: acc_dashboard) #}
-{% set url_dashboard     = url_for('acc_dashboard.accounting_dashboard') %}
+{% set url_dashboard          = url_for('acc_dashboard.accounting_dashboard') %}
 {# My Profile (Blueprint: acc_profile) #}
-{% set url_acc_profile   = url_for('acc_profile.profile') %}
+{% set url_acc_profile        = url_for('acc_profile.profile') %}
+{# NEW: Payment Vouchers (Blueprint: payment_voucher) #}
+{% set url_payment_vouchers   = url_for('payment_voucher.form_page') %}
 
 <link id="acc-material-icons" rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
@@ -51,15 +53,22 @@
       <span class="acc-text">Dashboard</span>
     </a>
 
-    
-
     {# ===== Expenses & Payables (EXPENSES AT THE TOP) ===== #}
     <p class="acc-sec">Expenses &amp; Payables</p>
+
     <a class="acc-link {% if url_expenses and request.path.startswith(url_expenses) %}is-active{% endif %}"
        href="{{ url_expenses }}">
       <span class="material-symbols-outlined acc-ico">money_off</span>
       <span class="acc-text">Expense Tracker</span>
     </a>
+
+    {# 🔥 NEW: Payment Vouchers ===== #}
+    <a class="acc-link {% if url_payment_vouchers and request.path.startswith(url_payment_vouchers) %}is-active{% endif %}"
+       href="{{ url_payment_vouchers }}">
+      <span class="material-symbols-outlined acc-ico">request_quote</span>
+      <span class="acc-text">Payment Vouchers</span>
+    </a>
+
     <a class="acc-link {% if url_ap_bills and request.path.startswith(url_ap_bills) %}is-active{% endif %}"
        href="{{ url_ap_bills }}">
       <span class="material-symbols-outlined acc-ico">receipt_long</span>
