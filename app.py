@@ -31,6 +31,8 @@ from users import users_bp
 from taxes import taxes_bp
 from prices_bp import prices_bp
 from frontdesk.leaves import leaves_bp
+from admin_reports import admin_reports_bp
+
 
 # === Accounting (separate blueprints) ===
 from accounting_routes.accounts import accounting_bp               # Chart of Accounts, etc.
@@ -49,6 +51,7 @@ from accounting_routes.expenses import acc_expenses
 from accounting_routes.balance_sheet import acc_balance_sheet
 from accounting_routes.dashboard import acc_dashboard
 from accounting_routes.profile import acc_profile
+from accounting_routes.payment_voucher import payment_voucher_bp
 
 # === Admin Features ===
 from admin.admin_dashboard import admin_dashboard_bp
@@ -136,6 +139,7 @@ app.register_blueprint(taxes_bp)
 app.register_blueprint(taxes_hist_bp)
 app.register_blueprint(prices_bp)
 app.register_blueprint(bank_accounts_bp)  # general/legacy bank accounts routes (non-accounting)
+app.register_blueprint(admin_reports_bp)
 
 # Accounting (all under /accounting)
 app.register_blueprint(ledger_bp,        url_prefix="/accounting")             # /accounting/ledger
@@ -165,6 +169,7 @@ app.register_blueprint(bank_recon_bp,    url_prefix="/accounting")             #
 app.register_blueprint(accounting_bp,    url_prefix="/accounting")             # /accounting/accounts, etc.
 app.register_blueprint(journals_bp,      url_prefix="/accounting")             # /accounting/journals, ...
 app.register_blueprint(acc_profile)
+app.register_blueprint(payment_voucher_bp, url_prefix="/accounting/payment-vouchers")
 
 # ✅ Fixed Assets mounted under /accounting/fixed-assets
 app.register_blueprint(
