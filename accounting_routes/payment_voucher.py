@@ -63,22 +63,26 @@ def _to_decimal(val, default: str = "0") -> Decimal:
         return Decimal(default)
 
 
-def _pv_prefix_for_today(now: datetime | None = None) -> str:
-    """TTGH-DD-MM-"""
+# ============================================================
+# PV Numbering: TTGH-YY-MM-0001  (YY=year, MM=month)
+# Sequence increments per (year, month)
+# ============================================================
+def _pv_prefix_for_now(now: datetime | None = None) -> str:
+    """TTGH-YY-MM-"""
     now = now or datetime.today()
-    dd = f"{now.day:02d}"
-    mm = f"{now.month:02d}"
-    return f"TTGH-{dd}-{mm}-"
+    yy = f"{now.year % 100:02d}"   # 2025 -> 25
+    mm = f"{now.month:02d}"        # 12 -> 12
+    return f"TTGH-{yy}-{mm}-"
 
 
 def _next_pv_number(now: datetime | None = None) -> str:
     """
     Generate next PV number like:
       TTGH-25-12-0001
-    where 25=day, 12=month, 0001 increments per day.
+    where 25=year, 12=month, 0001 increments within that month.
     """
     now = now or datetime.today()
-    prefix = _pv_prefix_for_today(now)
+    prefix = _pv_prefix_for_now(now)
 
     last = payment_vouchers_col.find_one(
         {"pv_number": {"$regex": f"^{prefix}"}},
