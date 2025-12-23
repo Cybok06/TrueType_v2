@@ -112,6 +112,7 @@
     "unapproved_orders_count": unapproved_orders_count|default(0),
     "unconfirmed_payments_count": unconfirmed_payments_count|default(0),
     "unconfirmed_truck_payments_count": unconfirmed_truck_payments_count|default(0),
+    "pending_payment_vouchers_count": pending_payment_vouchers_count|default(0),
     "truck_debtors_count": truck_debtors_count|default(0),
     "omc_debtors_count": omc_debtors_count|default(0),
     "omc_outstanding_total": omc_outstanding_total|default(0.0),
@@ -205,6 +206,18 @@
           {% endif %}
         </div>
       </div>
+    {% endif %}
+
+    {# PAYMENT APPROVALS #}
+    {% if SUPER or ('payments:approve' in ALLOWED) or ('accounting:dashboard' in ALLOWED) %}
+      <a class="sidebar-link d-flex justify-content-between align-items-center"
+         href="#"
+         id="paymentApprovalsBtn"
+         data-bs-toggle="modal"
+         data-bs-target="#paymentApprovalsModal">
+        <span><i class="bi bi-check2-square me-2"></i>PAYMENT APPROVALS</span>
+        <span id="badge-payment-approvals" class="badge bg-danger rounded-circle px-2 py-1" style="display:none"></span>
+      </a>
     {% endif %}
 
     {# STATEMENTS #}
@@ -334,6 +347,48 @@
     </div>
   </div>
 
+  <!-- Payment Approvals Modal -->
+  <div class="modal fade" id="paymentApprovalsModal" tabindex="-1" aria-hidden="true"
+       data-pending-url="{{ url_for('payment_voucher.pending_vouchers') }}"
+       data-approve-url="{{ url_for('payment_voucher.approve_voucher', voucher_id='__ID__') }}"
+       data-view-url="{{ url_for('payment_voucher.view_voucher', voucher_id='__ID__') }}">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Payment Approvals</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="text-muted small">Showing payment vouchers awaiting approval.</div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshPaymentApprovals">
+              <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>PV No.</th>
+                  <th>Date</th>
+                  <th>Payee</th>
+                  <th class="text-end">Amount</th>
+                  <th>Status</th>
+                  <th class="text-end">Action</th>
+                </tr>
+              </thead>
+              <tbody id="paymentApprovalsBody">
+                <tr>
+                  <td colspan="6" class="text-center text-muted small">Loading vouchers...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Sidebar toggle & dropdowns -->
   <script>
     document.getElementById("toggleSidebar").addEventListener("click", function () {
@@ -416,6 +471,7 @@
       setBadge('badge-orders-sub', prev.unapproved_orders_count||0);
       setBadge('badge-payments', prev.unconfirmed_payments_count||0);
       setBadge('badge-payments-sub', prev.unconfirmed_payments_count||0);
+      setBadge('badge-payment-approvals', prev.pending_payment_vouchers_count||0);
       setBadge('badge-truck', prev.unconfirmed_truck_payments_count||0);
       setBadge('badge-truck-sub', prev.unconfirmed_truck_payments_count||0);
       setBadge('badge-truck-debtors', prev.truck_debtors_count||0);
@@ -464,6 +520,9 @@
         setBadge('badge-payments', c.unconfirmed_payments_count);
         setBadge('badge-payments-sub', c.unconfirmed_payments_count);
 
+        diffNotify(prev.pending_payment_vouchers_count, c.pending_payment_vouchers_count, 'payment vouchers pending approval');
+        setBadge('badge-payment-approvals', c.pending_payment_vouchers_count);
+
         diffNotify(prev.unconfirmed_truck_payments_count, c.unconfirmed_truck_payments_count, 'truck payments awaiting confirmation');
         setBadge('badge-truck', c.unconfirmed_truck_payments_count);
         setBadge('badge-truck-sub', c.unconfirmed_truck_payments_count);
@@ -483,6 +542,108 @@
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pulse(); });
     setInterval(pulse, 1000);
     window.addEventListener('load', pulse);
+  </script>
+
+  <script>
+    (function () {
+      const modal = document.getElementById('paymentApprovalsModal');
+      if (!modal) return;
+
+      const pendingUrl = modal.dataset.pendingUrl;
+      const approveTpl = modal.dataset.approveUrl;
+      const viewTpl = modal.dataset.viewUrl;
+      const body = document.getElementById('paymentApprovalsBody');
+      const refreshBtn = document.getElementById('refreshPaymentApprovals');
+      const badge = document.getElementById('badge-payment-approvals');
+
+      function fmtMoney(n){
+        return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function setBadgeCount(count){
+        if (!badge) return;
+        if (count > 0) {
+          badge.style.display = 'inline-block';
+          badge.textContent = String(count);
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      function renderRows(vouchers){
+        if (!body) return;
+        if (!vouchers.length) {
+          body.innerHTML = '<tr><td colspan="6" class="text-center text-muted small">No pending vouchers.</td></tr>';
+          return;
+        }
+        const rows = vouchers.map(v => {
+          const viewUrl = viewTpl.replace('__ID__', v.id);
+          const statusBadge = v.approval_status === 'approved'
+            ? '<span class="badge bg-success">Approved</span>'
+            : '<span class="badge bg-warning text-dark">Pending</span>';
+          const approveBtn = v.approval_status === 'approved'
+            ? '<button class="btn btn-sm btn-outline-secondary" disabled>Approved</button>'
+            : `<button class="btn btn-sm btn-success js-approve-voucher" data-id="${v.id}">Approve</button>`;
+          return `
+            <tr>
+              <td><a href="${viewUrl}" target="_blank" rel="noopener">${v.pv_number || ''}</a></td>
+              <td class="small">${v.date || ''}</td>
+              <td class="small">${v.to_name || ''}</td>
+              <td class="text-end small">GHS ${fmtMoney(v.total_payable)}</td>
+              <td>${statusBadge}</td>
+              <td class="text-end">${approveBtn}</td>
+            </tr>
+          `;
+        }).join('');
+        body.innerHTML = rows;
+      }
+
+      async function loadPending(){
+        if (!body) return;
+        body.innerHTML = '<tr><td colspan="6" class="text-center text-muted small">Loading vouchers...</td></tr>';
+        try {
+          const res = await fetch(pendingUrl, { cache: 'no-store' });
+          const data = await res.json();
+          const vouchers = data?.vouchers || [];
+          renderRows(vouchers);
+          setBadgeCount(vouchers.length);
+        } catch (e) {
+          body.innerHTML = '<tr><td colspan="6" class="text-center text-danger small">Failed to load vouchers.</td></tr>';
+        }
+      }
+
+      async function approveVoucher(id, btn){
+        if (!id) return;
+        try {
+          btn.disabled = true;
+          const url = approveTpl.replace('__ID__', id);
+          const res = await fetch(url, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok || !data.ok) throw new Error(data?.error || 'Approval failed');
+          const row = btn.closest('tr');
+          if (row) {
+            const statusCell = row.querySelector('td:nth-child(5)');
+            if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Approved</span>';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-secondary');
+            btn.textContent = 'Approved';
+          }
+          const count = Math.max(0, (Number(badge?.textContent || 0) || 0) - 1);
+          setBadgeCount(count);
+        } catch (e) {
+          btn.disabled = false;
+          alert(e.message || 'Approval failed');
+        }
+      }
+
+      modal.addEventListener('show.bs.modal', loadPending);
+      refreshBtn?.addEventListener('click', loadPending);
+      body?.addEventListener('click', function (e) {
+        const btn = e.target.closest('.js-approve-voucher');
+        if (!btn) return;
+        approveVoucher(btn.dataset.id, btn);
+      });
+    })();
   </script>
 
   <script src="{{ url_for('static', filename='js/admin_dashboard.js') }}"></script>
