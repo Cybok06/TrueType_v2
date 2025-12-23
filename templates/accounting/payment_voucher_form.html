@@ -487,6 +487,7 @@
               <th>PV No.</th>
               <th>Date</th>
               <th>To</th>
+              <th>Status</th>
               <th class="text-end">Amount</th>
             </tr>
             </thead>
@@ -506,6 +507,14 @@
                     </td>
                     <td class="small">{% if v.date %}{{ v.date.strftime('%d-%b-%y') }}{% endif %}</td>
                     <td class="small text-truncate" style="max-width:150px;">{{ v.to_name or '—' }}</td>
+                    <td class="small">
+                      {% set approval_status = v.approval_status or 'pending' %}
+                      {% if approval_status == 'approved' %}
+                        <span class="badge bg-success">Approved</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark">Pending</span>
+                      {% endif %}
+                    </td>
                     <td class="text-end small">
                       {{ "GH₵{:,.2f}".format(v.total_payable or 0) }}
                     </td>
@@ -513,7 +522,7 @@
                 {% endfor %}
               {% else %}
                 <tr class="text-muted small">
-                  <td colspan="4" class="text-center py-3">No vouchers created yet.</td>
+                  <td colspan="5" class="text-center py-3">No vouchers created yet.</td>
                 </tr>
               {% endif %}
               </tbody>
