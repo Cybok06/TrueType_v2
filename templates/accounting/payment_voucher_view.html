@@ -22,6 +22,9 @@
     .pv-title-block { text-align:right; }
     .pv-company { font-size:1.05rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
     .pv-subtitle { margin-top:4px; font-weight:600; letter-spacing:.16em; color:#f97316; text-transform:uppercase; font-size:.78rem; }
+    .pv-status-badge { display:inline-flex; align-items:center; justify-content:center; padding:2px 10px; border-radius:999px; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; margin-top:6px; border:1px solid transparent; }
+    .pv-status-approved { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+    .pv-status-pending { background:#fef9c3; color:#854d0e; border-color:#fde68a; }
 
     .pv-meta-row { display:grid; grid-template-columns: 1fr auto; gap:16px; margin-top:10px; font-size:.8rem; }
     .pv-meta-box { border:1px solid var(--line); padding:4px 8px; }
@@ -143,6 +146,10 @@
         <div class="pv-title-block">
           <div class="pv-company">TRUETYPE GROUP HOLDINGS</div>
           <div class="pv-subtitle">PAYMENT VOUCHER</div>
+          {% set approval_status = v.approval_status or 'pending' %}
+          <div class="pv-status-badge {{ 'pv-status-approved' if approval_status == 'approved' else 'pv-status-pending' }}">
+            {{ 'Approved' if approval_status == 'approved' else 'Pending approval' }}
+          </div>
 
           <div class="pv-meta-row">
             <div class="pv-meta-box">
