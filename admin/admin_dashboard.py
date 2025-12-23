@@ -11,6 +11,7 @@ payments_collection = db["payments"]
 truck_payments_collection = db["truck_payments"]
 tax_records_collection = db["tax_records"]
 sbdc_collection = db["s_bdc_payment"]
+payment_vouchers_collection = db["payment_vouchers"]
 
 def _load_current_user():
     """
@@ -60,6 +61,9 @@ def dashboard():
     overdue_clients_count = clients_collection.count_documents({"status": "overdue"})
     unconfirmed_payments_count = payments_collection.count_documents({"status": "pending"})
     unconfirmed_truck_payments_count = truck_payments_collection.count_documents({"status": "pending"})
+    pending_payment_vouchers_count = payment_vouchers_collection.count_documents(
+        {"approval_status": {"$in": [None, "pending"]}}
+    )
 
     # Truck debtors count
     pipeline = [
@@ -141,6 +145,7 @@ def dashboard():
         omc_outstanding_total=omc_outstanding_total,
         bdc_debtors_count=bdc_debtors_count,
         bdc_outstanding_total=bdc_outstanding_total,
+        pending_payment_vouchers_count=pending_payment_vouchers_count,
 
         # 👉 server-render permissions (no client fetch, no session perms)
         allowed_slugs=list(allowed_slugs),
