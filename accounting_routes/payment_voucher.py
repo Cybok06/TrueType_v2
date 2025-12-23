@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from flask import (
     Blueprint, render_template, request,
-    redirect, url_for, flash, abort, jsonify
+    redirect, url_for, flash, abort, jsonify, session
 )
 from bson import ObjectId
 from datetime import datetime
@@ -46,6 +46,7 @@ def _ensure_indexes() -> None:
         payment_vouchers_col.create_index([("date", -1)])
         payment_vouchers_col.create_index([("to_name", 1)])
         payment_vouchers_col.create_index([("pv_number", 1)], unique=True)  # prevent duplicates
+        payment_vouchers_col.create_index([("approval_status", 1)])
         images_col.create_index([("created_at", -1)])
     except Exception:
         # ignore if no permissions / already exists
@@ -295,6 +296,9 @@ def create_voucher():
 
         "recipient_details": recipient_details,
         "created_at": datetime.utcnow(),
+        "approval_status": "pending",
+        "approved_at": None,
+        "approved_by_user": None,
     }
 
     # Retry loop in case of rare pv_number collision (unique index)
@@ -325,3 +329,61 @@ def view_voucher(voucher_id: str):
         abort(404)
 
     return render_template("payment_voucher_view.html", v=voucher)
+
+
+def _format_date(dt):
+    if not dt:
+        return ""
+    try:
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+@payment_voucher_bp.get("/pending")
+def pending_vouchers():
+    """Return vouchers pending approval."""
+    rows = list(
+        payment_vouchers_col.find(
+            {"approval_status": {"$in": [None, "pending"]}}
+        ).sort("created_at", -1).limit(100)
+    )
+    payload = []
+    for v in rows:
+        payload.append({
+            "id": str(v.get("_id")),
+            "pv_number": v.get("pv_number") or "",
+            "date": _format_date(v.get("date") or v.get("created_at")),
+            "to_name": v.get("to_name") or "",
+            "total_payable": float(v.get("total_payable") or 0),
+            "approval_status": v.get("approval_status") or "pending",
+        })
+    return jsonify({"ok": True, "vouchers": payload})
+
+
+@payment_voucher_bp.post("/<voucher_id>/approve")
+def approve_voucher(voucher_id: str):
+    """Approve a payment voucher."""
+    try:
+        oid = ObjectId(voucher_id)
+    except Exception:
+        abort(404)
+
+    username = session.get("username") or ""
+    update = {
+        "approval_status": "approved",
+        "approved_at": datetime.utcnow(),
+        "approved_by_user": username,
+    }
+    res = payment_vouchers_col.update_one(
+        {"_id": oid, "approval_status": {"$ne": "approved"}},
+        {"$set": update},
+    )
+    if res.matched_count == 0:
+        return jsonify({"ok": False, "error": "Voucher not found or already approved"}), 404
+
+    return jsonify({
+        "ok": True,
+        "approval_status": "approved",
+        "approved_by_user": username,
+    })
