@@ -15,6 +15,16 @@ accounts_col = db["bank_accounts"]
 payments_col = db["payments"]        # confirmed inbound cash-ins
 tax_col      = db["tax_records"]     # P-Tax outflows (source_bank_id)
 sbdc_col     = db["s_bdc_payment"]   # BDC bank payments (bank_paid_history)
+bank_txn_col = db["bank_transactions"]  # manual deposits/withdrawals/transfers
+
+def _ensure_txn_indexes() -> None:
+    try:
+        bank_txn_col.create_index([("bank_id", 1), ("txn_date", -1)])
+        bank_txn_col.create_index([("transfer_id", 1)])
+    except Exception:
+        pass
+
+_ensure_txn_indexes()
 
 
 # ----------------- helpers -----------------
@@ -96,6 +106,30 @@ def _sum_bdc_out(bank_oid: ObjectId) -> float:
     except Exception:
         return 0.0
 
+def _sum_manual_in(bank_oid: ObjectId) -> float:
+    """Sum manual inflows for this bank (deposit, transfer_in)."""
+    try:
+        pipe = [
+            {"$match": {"bank_id": bank_oid, "type": {"$in": ["deposit", "transfer_in"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+        ]
+        row = next(bank_txn_col.aggregate(pipe), None)
+        return _safe_float(row["total"]) if row else 0.0
+    except Exception:
+        return 0.0
+
+def _sum_manual_out(bank_oid: ObjectId) -> float:
+    """Sum manual outflows for this bank (withdrawal, transfer_out)."""
+    try:
+        pipe = [
+            {"$match": {"bank_id": bank_oid, "type": {"$in": ["withdrawal", "transfer_out"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+        ]
+        row = next(bank_txn_col.aggregate(pipe), None)
+        return _safe_float(row["total"]) if row else 0.0
+    except Exception:
+        return 0.0
+
 
 # ----------------- pages -----------------
 @bank_accounts_bp.get("/bank-accounts")
@@ -122,9 +156,11 @@ def list_accounts():
         total_in = _sum_confirmed_in(bank_name, last4)
         ptax_out = _sum_ptax_out(bank_oid)
         bdc_out = _sum_bdc_out(bank_oid)
-        total_out = ptax_out + bdc_out
+        manual_in = _sum_manual_in(bank_oid)
+        manual_out = _sum_manual_out(bank_oid)
+        total_out = ptax_out + bdc_out + manual_out
 
-        live_balance = opening + total_in - total_out
+        live_balance = opening + total_in + manual_in - total_out
         total_live_balance += live_balance
 
         cur = (d.get("currency") or "GHS").upper()
@@ -144,6 +180,8 @@ def list_accounts():
             "total_in": round(total_in, 2),
             "ptax_out": round(ptax_out, 2),
             "bdc_out": round(bdc_out, 2),
+            "manual_in": round(manual_in, 2),
+            "manual_out": round(manual_out, 2),
             "net_flow": round(total_in - total_out, 2),
         }
 
@@ -224,6 +262,8 @@ def export_excel():
         "Total Inflow (confirmed)",
         "P-Tax Out",
         "BDC Out",
+        "Manual In",
+        "Manual Out",
         "Net Flow (In - Out)",
         "Live Balance",
         "Last Reconciled",
@@ -242,8 +282,10 @@ def export_excel():
         total_in = _sum_confirmed_in(bank_name, last4)
         ptax_out = _sum_ptax_out(bank_oid)
         bdc_out = _sum_bdc_out(bank_oid)
-        total_out = ptax_out + bdc_out
-        net_flow = total_in - total_out
+        manual_in = _sum_manual_in(bank_oid)
+        manual_out = _sum_manual_out(bank_oid)
+        total_out = ptax_out + bdc_out + manual_out
+        net_flow = total_in + manual_in - total_out
         live_balance = opening + net_flow
 
         cur = (d.get("currency") or "GHS").upper()
@@ -260,6 +302,8 @@ def export_excel():
             f"{total_in:0.2f}",
             f"{ptax_out:0.2f}",
             f"{bdc_out:0.2f}",
+            f"{manual_in:0.2f}",
+            f"{manual_out:0.2f}",
             f"{net_flow:0.2f}",
             f"{live_balance:0.2f}",
             last or "",
