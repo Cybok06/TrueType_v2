@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Invoice • TrueType Services</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --brand:#0b3b7a; --brand-2:#1e293b;
+    --bg:#ffffff; --chip:#f1f5f9; --accent:#0ea5e9; --soft:#f6f8fb; --ok:#16a34a;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{margin:0; background:var(--soft); color:var(--ink); font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  .page{ max-width:960px; margin:28px auto; padding:0 16px; }
+
+  /* PDF sections */
+  .invoice{ background:var(--bg); border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:0 6px 28px rgba(2,6,23,.06); }
+  .inv-header{ display:grid; grid-template-columns: 1fr auto auto; gap:16px; align-items:center; padding:22px 24px;
+    background: radial-gradient(1000px 400px at 10% -200px, rgba(14,165,233,.10), transparent 60%), linear-gradient(180deg, #fff, #fafcff);
+    border-bottom:1px solid var(--line);
+  }
+  .logo{ display:flex; align-items:center; gap:14px; min-width:0; }
+  .logo-box{ width:60px; height:60px; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#fff; display:grid; place-items:center; }
+  .logo-box img{max-width:100%; max-height:100%; object-fit:contain; display:block}
+  .brand-block{min-width:0}
+  .brand{ font-weight:800; letter-spacing:.2px; color:var(--brand-2); font-size:20px; line-height:1.2; }
+  .subtitle{font-size:12px; color:var(--muted)}
+  .status{ justify-self:end; background:var(--chip); border:1px solid var(--line); padding:6px 10px; border-radius:999px; color:var(--brand-2); font-weight:600; white-space:nowrap; align-self:start; }
+  .qr-wrap{ justify-self:end; width:88px; height:88px; border-radius:12px; background:#fff; border:1px solid var(--line); display:grid; place-items:center; padding:6px; }
+  .qr-wrap img{ display:block; width:100%; height:100%; object-fit:contain }
+  .meta{ display:grid; grid-template-columns: 1fr auto; gap:12px 24px; padding:18px 24px; border-bottom:1px solid var(--line); }
+  .meta .chips{display:flex; gap:10px 12px; flex-wrap:wrap}
+  .chip{background:var(--chip); border:1px solid var(--line); padding:6px 12px; border-radius:999px; font-size:12px; color:var(--brand-2)}
+  .mono{font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1}
+  .right{ min-width:280px }
+  .right .row{ display:flex; justify-content:space-between; gap:18px; font-size:13px; padding:4px 0 }
+  .right .key{ color:var(--muted) } .right .val{ font-weight:700; color:var(--ink) }
+  .section-title{ padding:14px 24px; font-weight:800; letter-spacing:.3px; color:var(--brand-2); border-bottom:1px solid var(--line); background:#fcfdff; }
+  .table-wrap{ padding:0 24px 8px }
+  table.table{ width:100%; border-collapse:separate; border-spacing:0; font-size:14px; overflow:hidden; border:1px solid var(--line); border-radius:12px; }
+  .table thead th{ text-align:left; font-weight:800; color:var(--brand-2); background:linear-gradient(180deg,#f8fafc,#f3f6fb); border-bottom:1px solid var(--line); padding:12px 14px; }
+  .table tbody td{ padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .table tbody tr:nth-child(odd) td{ background:#fcfdff } .table tbody tr:last-child td{ border-bottom:0 }
+  .k{ color:var(--muted); width:260px } .v{ font-weight:600; color:var(--ink) } .bold{ font-weight:800 }
+  .totals{ display:grid; grid-template-columns: 1fr minmax(300px, 36%); gap:18px; padding:10px 24px 24px; border-top:1px solid var(--line); }
+  .notes{ font-size:12px; color:var(--muted); background:#fbfdff; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; }
+  .totals .box{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 4px 16px rgba(2,6,23,.05); }
+  .totals .row{ display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .totals .row:last-child{border-bottom:0} .label{ color:var(--muted); font-weight:600 } .value{ font-weight:800; color:var(--ink) }
+  .grand{ background:linear-gradient(180deg,#fff,#f8fbff) } .grand .value{ font-size:20px; color:var(--brand) }
+  .footer{ padding:14px 24px 20px; border-top:1px solid var(--line); background:#fcfdff; font-size:12px; color:var(--muted);
+    display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .print-actions{ padding:14px 0 0; display:flex; justify-content:flex-end }
+  .top-actions{ padding:14px 0 6px; display:flex; justify-content:flex-end; gap:10px; }
+  .btn{ appearance:none; border:1px solid var(--line); background:#ffffff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700; box-shadow:0 2px 10px rgba(2,6,23,.08); }
+  .btn:hover{ background:#f8fafc }
+  .btn-primary{ background:var(--brand); color:#fff; border-color:var(--brand); }
+  .btn-primary:hover{ background:#0a3167; }
+  .btn[disabled]{ opacity:.6; cursor:progress; }
+  .btn .spinner{ display:none; width:14px; height:14px; border:2px solid rgba(255,255,255,.5); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; margin-left:8px; }
+  .btn.is-loading .spinner{ display:inline-block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* Compact Order Details sheet (second PDF) */
+  .mini-note{ margin-top:24px; background:#fff; border:1px dashed var(--line); border-radius:12px; overflow:hidden; }
+  .mini-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 16px; background:#f8fafc; border-bottom:1px dashed var(--line); }
+  /* mini brand (logo + company name) */
+  .mini-brand{ display:flex; align-items:center; gap:12px; }
+  .mini-logo-box{ width:42px; height:42px; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#fff; display:grid; place-items:center; }
+  .mini-logo-box img{ max-width:100%; max-height:100%; object-fit:contain; display:block; }
+  .mini-brand-name{ font-weight:800; color:var(--brand-2); font-size:16px; line-height:1.1; letter-spacing:.2px; white-space:nowrap; }
+
+  .mini-head-right{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  .mini-head-right .title{ font-weight:800; color:var(--brand-2); }
+  .mini-head-right .meta{ padding:0; border:0; display:block; }
+  .mini-head-right .mono{ font-size:12px; color:var(--muted); }
+
+  .mini-body{ padding:14px 16px; font-size:14px; }
+  .mini-body .row{ display:flex; gap:10px; padding:4px 0 }
+  .mini-k{ color:var(--muted); width:120px; }
+  .mini-v{ font-weight:700; color:var(--ink); flex:1 }
+
+  /* page break helper (not used for separate PDFs, but harmless) */
+  .page-break { page-break-before: always; break-before: page; }
+
+  @media print{
+    body{background:#fff}
+    .page{max-width:none; margin:0; padding:0}
+    .print-actions{display:none}
+    .invoice{border:0; box-shadow:none; border-radius:0}
+    .notes{border-style:solid}
+    .inv-header, .meta, .section-title, .table, .totals, .footer{ -webkit-print-color-adjust:exact; print-color-adjust:exact }
+    @page { size: A4; margin: 16mm }
+    .inv-header, .meta, .totals, .footer { page-break-inside: avoid }
+    .page-break { page-break-before: always; break-before: page; }
+  }
+
+  @media (max-width:720px){
+    .inv-header{ grid-template-columns: 1fr auto; grid-auto-rows: auto; }
+    .status{ order:3; justify-self:start }
+    .qr-wrap{ order:2 } .meta{ grid-template-columns:1fr } .right{ min-width:0 } .k{ width:46% } .totals{ grid-template-columns:1fr }
+    .mini-head{ flex-direction:column; align-items:flex-start; gap:10px; }
+    .mini-head-right{ align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="top-actions">
+      <button id="downloadBtn" class="btn btn-primary" type="button">
+        Download Invoice <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- MAIN INVOICE (first PDF) -->
+    <section class="invoice" id="invoice" aria-label="Invoice">
+      <header class="inv-header">
+        <div class="logo">
+          <div class="logo-box">
+            <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="TrueType Services" />
+          </div>
+          <div class="brand-block">
+            <div class="brand" id="brandName">TrueType Services</div>
+            <div class="subtitle">Professional Sales Invoice</div>
+          </div>
+        </div>
+        <div class="status" id="statusChip" aria-live="polite">
+          Order • {{ order.status|default('Pending')|title }}
+        </div>
+        <div class="qr-wrap" title="Scan for invoice details">
+          <img id="qrImg" alt="Invoice QR">
+        </div>
+      </header>
+
+      <section class="meta">
+        <div class="chips">
+          <span class="chip">Order</span>
+          <span class="chip mono">Order ID: <span class="bold" id="orderId">{{ order.order_id or order._id }}</span></span>
+          <span class="chip mono">
+            Client: <span class="bold">
+              {{ (client.name or '—') ~ ' (' ~ (client.client_id or '—') ~ ')' }}
+            </span>
+          </span>
+          <span class="chip mono">Type: <span class="bold" id="orderType">{{ (order.order_type or 'combo')|lower|replace('_','-')|title }}</span></span>
+        </div>
+        <div class="right">
+          <div class="row"><span class="key">Invoice Date</span><span class="val mono" id="invDate">{{ (order.date or now).strftime('%Y-%m-%d') }}</span></div>
+          <div class="row"><span class="key">Due Date</span><span class="val mono" id="dueDate">{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '-' }}</span></div>
+        </div>
+      </section>
+
+      <h2 class="section-title">Order Details</h2>
+      <div class="table-wrap">
+        <table class="table" role="table" aria-label="Order details">
+          <thead>
+            <tr><th scope="col" style="width:30%">Field</th><th scope="col">Information</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="k">Client Name</td><td class="v" id="cname">{{ client.name or '—' }}</td></tr>
+            <tr><td class="k">Client ID</td><td class="v mono" id="cid">{{ client.client_id or '—' }}</td></tr>
+            <tr><td class="k">Client Phone</td><td class="v mono" id="cphone">{{ client.phone or '—' }}</td></tr>
+
+            <tr><td class="k">Product</td><td class="v strong" id="prod">{{ order.product or '—' }}</td></tr>
+            <tr><td class="k">Vehicle Number</td><td class="v mono" id="veh">{{ order.vehicle_number or '—' }}</td></tr>
+            <tr><td class="k">Driver's Name</td><td class="v" id="dname">{{ order.driver_name or '—' }}</td></tr>
+            <tr><td class="k">Driver's Phone</td><td class="v mono bold" id="dphone">{{ order.driver_phone or '—' }}</td></tr>
+            <tr><td class="k">Quantity (L)</td><td class="v mono" id="qty">{{ '{:,.0f}'.format((order.quantity or 0.0)|float) }}</td></tr>
+            <tr><td class="k">Region</td><td class="v" id="region">{{ order.region or '—' }}</td></tr>
+
+            {% set q = (order.quantity or 0.0)|float %}
+            {% set stax = (order.s_tax or 0.0)|float %}
+            {% set sbdc = (order.s_bdc_omc or 0.0)|float %}
+            {% set has_stax = stax > 0 %}
+            {% set has_sbdc = sbdc > 0 %}
+
+            {% if has_stax and has_sbdc %}
+              <tr>
+                <td class="k">Rate (GHS/L)</td>
+                <td class="v mono" id="comboPerL">
+                  {{ '{:,.2f}'.format(stax + sbdc) }}
+                  <span class="chip" style="margin-left:.5rem;">S-BDC + S-Tax</span>
+                </td>
+              </tr>
+            {% elif has_stax %}
+              <tr><td class="k">Tax Price (GHS/L)</td><td class="v mono" id="stax">{{ '{:,.2f}'.format(stax) }}</td></tr>
+            {% elif has_sbdc %}
+              <tr><td class="k">BDC Price (GHS/L)</td><td class="v mono" id="sbdc">{{ '{:,.2f}'.format(sbdc) }}</td></tr>
+            {% else %}
+              <tr><td class="k">Combo Price (GHS/L)</td><td class="v mono" id="comboPerL">0.00</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <section class="totals">
+        <div class="notes">
+          <div class="em">Thank you for doing business with TrueType Services.</div>
+          <div class="em">For enquiries, contact <span class="bold">+233 277 336 609</span>.</div>
+        </div>
+
+        <div class="box" aria-label="Totals">
+          {% set per_l = (has_stax and has_sbdc) and (stax + sbdc) or (has_stax and stax) or (has_sbdc and sbdc) or 0.0 %}
+          {% set computed_debt = per_l * q %}
+          {% set total_debt = (order.total_debt is not none) and order.total_debt or computed_debt %}
+
+          {% if has_stax and has_sbdc %}
+            <div class="row"><div class="label"></div><div class="value mono" id="comboTotal">GHS {{ '{:,.2f}'.format(per_l * q) }}</div></div>
+          {% elif has_stax %}
+            <div class="row"><div class="label">S-Tax × Quantity</div><div class="value mono" id="taxTotal">GHS {{ '{:,.2f}'.format(stax * q) }}</div></div>
+          {% elif has_sbdc %}
+            <div class="row"><div class="label">S-BDC × Quantity</div><div class="value mono" id="bdcTotal">GHS {{ '{:,.2f}'.format(sbdc * q) }}</div></div>
+          {% else %}
+            <div class="row"><div class="label">Amount</div><div class="value mono" id="comboTotal">GHS 0.00</div></div>
+          {% endif %}
+
+          <div class="row grand"><div class="label bold">Total Debt</div><div class="value mono" id="grandTotal">GHS {{ '{:,.2f}'.format(total_debt) }}</div></div>
+          <div class="row"><div class="label">Due Date</div><div class="value mono" id="dueDate2">{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '-' }}</div></div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div>Issued by TrueType Services · Accra, Ghana</div>
+        <div class="mono">Receipt Ref: {{ receipt_ref or '-' }}</div>
+      </footer>
+    </section>
+
+    <!-- SECOND PDF CONTENT: compact Order Details (with logo + company name) -->
+    <section class="mini-note" id="dispatchNote" aria-label="Order Details (Compact)">
+      <div class="mini-head">
+        <div class="mini-brand">
+          <div class="mini-logo-box">
+            <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="TrueType Services" />
+          </div>
+          <div class="mini-brand-name" id="miniBrandName">TrueType Services</div>
+        </div>
+        <div class="mini-head-right">
+          <div class="title">ORDER DETAILS</div>
+          <div class="mono">Ref: <span id="miniOrderId">{{ order.order_id or order._id }}</span> • <span id="miniDate">{{ (order.date or now).strftime('%Y-%m-%d') }}</span></div>
+        </div>
+      </div>
+      <div class="mini-body">
+        <div class="row"><div class="mini-k">OMC</div>     <div class="mini-v" id="miniOMC">{{ order.omc or 'N/A' }}</div></div>
+        <div class="row"><div class="mini-k">BDC</div>     <div class="mini-v" id="miniBDC">{{ order.bdc_name or order.bdc or 'N/A' }}</div></div>
+        <div class="row"><div class="mini-k">Product</div> <div class="mini-v" id="miniProd">{{ order.product or '' }}</div></div>
+        <div class="row"><div class="mini-k">Quantity</div><div class="mini-v" id="miniQty">{{ '{:,.0f}'.format((order.quantity or 0.0)|float) }} L</div></div>
+        <div class="row"><div class="mini-k">Region</div>  <div class="mini-v" id="miniRegion">{{ order.region or '' }}</div></div>
+        <div class="row"><div class="mini-k">Vehicle</div> <div class="mini-v" id="miniVeh">{{ order.vehicle_number or '' }}</div></div>
+        <div class="row"><div class="mini-k">Driver</div>  <div class="mini-v" id="miniDrv">
+          {{ order.driver_name or '' }}{% if order.driver_phone %} ({{ order.driver_phone }}){% endif %}
+        </div></div>
+      </div>
+    </section>
+
+    <div class="print-actions">
+      <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+  </div>
+
+  <!-- html2pdf.js (bundled: html2canvas + jsPDF) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+
+  <!-- Manual PDF generation -->
+  <script>
+  (function () {
+    function val(id){const el=document.getElementById(id);return el?el.textContent.trim():"";}
+    function sanitize(s){
+      return String(s||'').replace(/\s+/g,'_').replace(/[^A-Za-z0-9_.-]/g,'').substring(0,120) || 'invoice';
+    }
+
+    /* ---------- Build QR for main invoice ---------- */
+    (function buildQR(){
+      const lines = [
+        "TrueType Services • Order Invoice",
+        "--------------------------------",
+        `Order ID: ${val('orderId')}`,
+        `Type: ${val('orderType')}`,
+        `Invoice Date: ${val('invDate')}`,
+        `Due Date: ${val('dueDate')}`,
+        "",
+        `Client Name: ${val('cname')}`,
+        `Client ID: ${val('cid')}`,
+        `Client Phone: ${val('cphone')}`,
+        "",
+        `Product: ${val('prod')}`,
+        `Vehicle Number: ${val('veh')}`,
+        `Driver Name: ${val('dname')}`,
+        `Driver Phone: ${val('dphone')}`,
+        `Quantity (L): ${val('qty')}`,
+        `Region: ${val('region')}`
+      ];
+      const comboPerL = val('comboPerL'), staxPerL  = val('stax'), sbdcPerL  = val('sbdc');
+      if (comboPerL) lines.push(`combo price (GHS/L): ${comboPerL} `);
+      if (!comboPerL && staxPerL) lines.push(`Tax price (GHS/L): ${staxPerL}`);
+      if (!comboPerL && sbdcPerL) lines.push(`BDC price (GHS/L): ${sbdcPerL}`);
+      const comboTotal = val('comboTotal'), taxTotal = val('taxTotal'), bdcTotal = val('bdcTotal');
+      if (comboTotal) lines.push(`Combo × Qty: ${comboTotal}`);
+      if (taxTotal)   lines.push(`S-Tax × Qty: ${taxTotal}`);
+      if (bdcTotal)   lines.push(`S-BDC × Qty: ${bdcTotal}`);
+      lines.push(`Total Debt: ${val('grandTotal')}`);
+
+      const text = lines.join("\n");
+      const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=" + encodeURIComponent(text);
+      const qrImg = document.getElementById('qrImg');
+      if (qrImg) qrImg.src = qrUrl;
+    })();
+
+    /* ---------- Mirror brand name to second PDF if needed ---------- */
+    (function syncBrand(){
+      const primary = document.getElementById('brandName');
+      const mini = document.getElementById('miniBrandName');
+      if (primary && mini && !mini.textContent.trim()) {
+        mini.textContent = primary.textContent.trim();
+      }
+    })();
+
+    /* ---------- Filenames ---------- */
+    const orderId   = sanitize(val('orderId'));
+    const clientId  = sanitize(val('cid'));
+    const clientNm  = sanitize(val('cname'));
+    const invDate   = sanitize(val('invDate'));
+    const fileMain  = `invoice_${orderId}__${clientId}__${clientNm}.pdf`;
+    const fileNote  = `${orderId}__${invDate}__order-details.pdf`;
+
+    /* ---------- Helpers ---------- */
+    function waitForImages(root) {
+      const imgs = root ? Array.from(root.querySelectorAll('img')) : Array.from(document.images || []);
+      const pending = imgs.filter(img => !img.complete || (typeof img.naturalWidth !== "number") || img.naturalWidth === 0);
+      if (pending.length === 0) return Promise.resolve();
+      return Promise.all(pending.map(img => new Promise(resolve => {
+        img.addEventListener('load',  resolve, {once:true});
+        img.addEventListener('error', resolve, {once:true});
+      })));
+    }
+
+    function saveElAsPDF(el, filename){
+      if (!el) return Promise.resolve();
+      const opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     filename,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff', windowWidth: document.documentElement.scrollWidth },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] }
+      };
+      return html2pdf().set(opt).from(el).save().then(() => undefined);
+    }
+
+    /* ---------- Run: two separate downloads, chained ---------- */
+    function runDownload() {
+      const mainEl = document.getElementById('invoice');
+      const noteEl = document.getElementById('dispatchNote');
+
+      return waitForImages(mainEl)
+        .then(() => saveElAsPDF(mainEl, fileMain))
+        .then(() => new Promise(r => setTimeout(r, 500))) // small gap so browsers queue second download
+        .then(() => waitForImages(noteEl))
+        .then(() => saveElAsPDF(noteEl, fileNote))
+        .catch(() => {/* swallow to avoid blocking page */});
+    }
+
+    const btn = document.getElementById('downloadBtn');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('is-loading')) return;
+        btn.classList.add('is-loading');
+        btn.setAttribute('disabled', 'disabled');
+        btn.firstChild.nodeValue = 'Downloading... ';
+        runDownload().finally(() => {
+          btn.classList.remove('is-loading');
+          btn.removeAttribute('disabled');
+          btn.firstChild.nodeValue = 'Download Invoice ';
+        });
+      });
+    }
+  })();
+  </script>
+</body>
+</html>

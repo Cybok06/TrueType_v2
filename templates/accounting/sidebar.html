@@ -1,0 +1,359 @@
+{# URL helpers #}
+{% set url_journals_list      = url_for('journals.journals') %}
+{% set url_journal_new        = url_for('journals.journal_new') %}
+{% set url_accounts           = url_for('accounting.accounts') %}
+{% set url_ledger             = url_for('ledger.ledger') %}
+{% set url_customers          = url_for('customers.customers') %}
+{% set url_ar_invoices        = url_for('ar_invoices.invoices') %}
+{% set url_ar_payments        = url_for('ar_payments.payments') %}
+{% set url_ar_aging           = url_for('ar_aging.aging_report') %}
+{% set url_ap_bills           = url_for('ap_bills.bills') %}
+{# 👇 use the alias name from app.register_blueprint(name="acc_bank_accounts") #}
+{% set url_bank_accounts      = url_for('acc_bank_accounts.list_accounts') %}
+{% set url_bank_recon         = url_for('bank_recon.bank_recon_index') %}
+{% set url_fixed_assets       = url_for('fixed_assets.register') %}
+{# Payroll calculator (Blueprint: acc_payroll_calc) #}
+{% set url_payroll_calc       = url_for('acc_payroll_calc.payroll_calculator') %}
+{# Expense tracker (Blueprint: acc_expenses) #}
+{% set url_expenses           = url_for('acc_expenses.expenses_page') %}
+{# Balance Sheet (Blueprint: acc_balance_sheet) #}
+{% set url_balance_sheet      = url_for('acc_balance_sheet.balance_sheet_page') %}
+{# Accounting Overview Dashboard (Blueprint: acc_dashboard) #}
+{% set url_dashboard          = url_for('acc_dashboard.accounting_dashboard') %}
+{# My Profile (Blueprint: acc_profile) #}
+{% set url_acc_profile        = url_for('acc_profile.profile') %}
+{# NEW: Payment Vouchers (Blueprint: payment_voucher) #}
+{% set url_payment_vouchers   = url_for('payment_voucher.form_page') %}
+
+<link id="acc-material-icons" rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
+      onload="this.media='all'" media="print">
+
+<!-- Sidebar -->
+<aside id="accSidebar" class="acc-sidebar" data-open="false" aria-hidden="true">
+  <div class="acc-sidebar__head">
+    <div class="acc-brand">
+      <img
+        src="https://static.wixstatic.com/media/13bf20_85bc952de62849e895a80e274750784b~mv2.png/v1/fill/w_392,h_146,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/13bf20_85bc952de62849e895a80e274750784b~mv2.png"
+        alt="TRUEtype Accounting"
+        class="acc-brand__logo"
+      >
+    </div>
+  </div>
+
+  <nav class="acc-nav" aria-label="Accounting navigation">
+
+    {# ===== Overview ===== #}
+    <p class="acc-sec">Overview</p>
+
+    {# Accounting Overview Dashboard #}
+    <a class="acc-link {% if url_dashboard and request.path.startswith(url_dashboard) %}is-active{% endif %}"
+       href="{{ url_dashboard }}">
+      <span class="material-symbols-outlined acc-ico">space_dashboard</span>
+      <span class="acc-text">Dashboard</span>
+    </a>
+
+    {# ===== Expenses & Payables (EXPENSES AT THE TOP) ===== #}
+    <p class="acc-sec">Expenses &amp; Payables</p>
+
+    <a class="acc-link {% if url_expenses and request.path.startswith(url_expenses) %}is-active{% endif %}"
+       href="{{ url_expenses }}">
+      <span class="material-symbols-outlined acc-ico">money_off</span>
+      <span class="acc-text">Expense Tracker</span>
+    </a>
+
+    {# 🔥 NEW: Payment Vouchers ===== #}
+    <a class="acc-link {% if url_payment_vouchers and request.path.startswith(url_payment_vouchers) %}is-active{% endif %}"
+       href="{{ url_payment_vouchers }}">
+      <span class="material-symbols-outlined acc-ico">request_quote</span>
+      <span class="acc-text">Payment Vouchers</span>
+    </a>
+
+    <a class="acc-link {% if url_ap_bills and request.path.startswith(url_ap_bills) %}is-active{% endif %}"
+       href="{{ url_ap_bills }}">
+      <span class="material-symbols-outlined acc-ico">receipt_long</span>
+      <span class="acc-text">AP Bills</span>
+    </a>
+
+    {# ===== Receivables ===== #}
+    <p class="acc-sec">Receivables</p>
+    <a class="acc-link {% if url_customers and request.path.startswith(url_customers) %}is-active{% endif %}"
+       href="{{ url_customers }}">
+      <span class="material-symbols-outlined acc-ico">group</span>
+      <span class="acc-text">Customers</span>
+    </a>
+    <a class="acc-link {% if url_ar_invoices and request.path.startswith(url_ar_invoices) %}is-active{% endif %}"
+       href="{{ url_ar_invoices }}">
+      <span class="material-symbols-outlined acc-ico">receipt_long</span>
+      <span class="acc-text">AR Invoices</span>
+    </a>
+    <a class="acc-link {% if url_ar_payments and request.path.startswith(url_ar_payments) %}is-active{% endif %}"
+       href="{{ url_ar_payments }}">
+      <span class="material-symbols-outlined acc-ico">payments</span>
+      <span class="acc-text">AR Payments</span>
+    </a>
+    <a class="acc-link {% if url_ar_aging and request.path.startswith(url_ar_aging) %}is-active{% endif %}"
+       href="{{ url_ar_aging }}">
+      <span class="material-symbols-outlined acc-ico">lab_profile</span>
+      <span class="acc-text">AR Aging</span>
+    </a>
+
+    {# ===== Bank & Cash ===== #}
+    <p class="acc-sec">Bank &amp; Cash</p>
+    <a class="acc-link {% if url_bank_accounts and request.path.startswith(url_bank_accounts) %}is-active{% endif %}"
+       href="{{ url_bank_accounts }}">
+      <span class="material-symbols-outlined acc-ico">account_balance</span>
+      <span class="acc-text">Bank &amp; Cash Accounts</span>
+    </a>
+    <a class="acc-link {% if url_bank_recon and request.path.startswith(url_bank_recon) %}is-active{% endif %}"
+       href="{{ url_bank_recon }}">
+      <span class="material-symbols-outlined acc-ico">account_balance_wallet</span>
+      <span class="acc-text">Bank Reconciliation</span>
+    </a>
+
+    {# ===== Payroll ===== #}
+    <p class="acc-sec">Payroll</p>
+    <a class="acc-link {% if url_payroll_calc and request.path.startswith(url_payroll_calc) %}is-active{% endif %}"
+       href="{{ url_payroll_calc }}">
+      <span class="material-symbols-outlined acc-ico">badge</span>
+      <span class="acc-text">Payroll Calculator</span>
+    </a>
+
+    {# ===== Reports (Balance Sheet, later P&L etc.) ===== #}
+    <p class="acc-sec">Reports</p>
+    <a class="acc-link {% if url_balance_sheet and request.path.startswith(url_balance_sheet) %}is-active{% endif %}"
+       href="{{ url_balance_sheet }}">
+      <span class="material-symbols-outlined acc-ico">analytics</span>
+      <span class="acc-text">Balance Sheet</span>
+    </a>
+
+    {# ===== Ledger & Setup ===== #}
+    <p class="acc-sec">Ledger &amp; Setup</p>
+    <a class="acc-link {% if url_ledger and request.path == url_ledger %}is-active{% endif %}"
+       href="{{ url_ledger }}">
+      <span class="material-symbols-outlined acc-ico">receipt_long</span>
+      <span class="acc-text">General Ledger</span>
+    </a>
+    <a class="acc-link {% if url_accounts and request.path.startswith(url_accounts) %}is-active{% endif %}"
+       href="{{ url_accounts }}">
+      <span class="material-symbols-outlined acc-ico">account_balance</span>
+      <span class="acc-text">Chart of Accounts</span>
+    </a>
+
+    {# ===== Journals ===== #}
+    <p class="acc-sec">Journals</p>
+    <a class="acc-link {% if url_journals_list and request.path == url_journals_list %}is-active{% endif %}"
+       href="{{ url_journals_list }}">
+      <span class="material-symbols-outlined acc-ico">menu_book</span>
+      <span class="acc-text">All Journal Entries</span>
+    </a>
+
+    <a class="acc-link {% if url_journal_new and request.path == url_journal_new %}is-active{% endif %}"
+       href="{{ url_journal_new }}">
+      <span class="material-symbols-outlined acc-ico">add_circle</span>
+      <span class="acc-text">New Journal</span>
+    </a>
+
+    <div class="acc-link acc-link--muted" tabindex="-1">
+      <span class="material-symbols-outlined acc-ico">visibility</span>
+      <span class="acc-text">View Journal (open from list)</span>
+    </div>
+
+    {# ===== Assets ===== #}
+    <p class="acc-sec">Assets</p>
+    <a class="acc-link {% if url_fixed_assets and request.path.startswith(url_fixed_assets) %}is-active{% endif %}"
+       href="{{ url_fixed_assets }}">
+      <span class="material-symbols-outlined acc-ico">inventory_2</span>
+      <span class="acc-text">Fixed Assets</span>
+    </a>
+
+  </nav>
+
+  {# Profile moved to bottom area #}
+  <div class="acc-account">
+    <a class="acc-link acc-link--profile {% if url_acc_profile and request.path.startswith(url_acc_profile) %}is-active{% endif %}"
+       href="{{ url_acc_profile }}">
+      <span class="material-symbols-outlined acc-ico">person</span>
+      <span class="acc-text">My Profile</span>
+    </a>
+  </div>
+
+  <div class="acc-foot">
+    <div>© TRUEtype</div>
+    <div>v1.0 • Accounting Suite</div>
+  </div>
+</aside>
+
+<!-- Backdrop for mobile -->
+<div id="accSidebarBackdrop" class="acc-backdrop" hidden aria-hidden="true"></div>
+
+<!-- Single floating toggle (icon changes between menu & close) -->
+<button id="accSidebarToggle" class="acc-toggle" aria-label="Open menu" title="Menu">
+  <span id="accSidebarToggleIcon" class="material-symbols-outlined">menu</span>
+</button>
+
+<style>
+  .acc-with-sidebar{ transition: margin-left .25s ease; }
+  @media (min-width:1024px){
+    body[data-acc-sidebar="open"] .acc-with-sidebar{ margin-left:280px; }
+  }
+
+  .acc-sidebar{
+    position:fixed; inset:0 auto 0 0; z-index:1040;
+    width:280px; max-width:85vw; height:100vh;
+    background: radial-gradient(circle at 0 0, #e0f2fe 0, #ffffff 45%, #ecfdf5 100%);
+    border-right:1px solid #e5e7eb;
+    transform:translateX(-100%); transition:transform .25s ease;
+    display:flex; flex-direction:column;
+  }
+  .acc-sidebar[data-open="true"]{ transform:translateX(0); }
+  @media (min-width:1024px){
+    .acc-sidebar{ transform:translateX(0); }
+    body[data-acc-sidebar="closed"] .acc-sidebar{ transform:translateX(-100%); }
+  }
+
+  .acc-sidebar__head{
+    height:70px; display:flex; align-items:center; justify-content:center;
+    padding:0 16px; border-bottom:1px solid #e5e7eb;
+  }
+  .acc-brand{ display:flex; align-items:center; justify-content:center; width:100%; }
+  .acc-brand__logo{
+    max-width:180px;
+    height:auto;
+    display:block;
+    object-fit:contain;
+  }
+
+  .acc-icon-btn{
+    width:36px; height:36px; border:1px solid #e5e7eb; border-radius:10px;
+    background:#fff; cursor:pointer; display:grid; place-items:center;
+  }
+
+  .acc-nav{ padding:10px 0; overflow-y:auto; flex:1; }
+  .acc-sec{
+    margin:12px 16px 6px; font-size:11px; text-transform:uppercase;
+    color:#64748b; letter-spacing:.08em;
+  }
+
+  .acc-link{
+    display:flex; align-items:center; gap:10px; margin:2px 8px; border-radius:10px;
+    padding:10px 16px; color:#0b1220; text-decoration:none; transition:
+      background .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+  }
+  .acc-link:hover{
+    background:#e0f2fe;
+    transform:translateX(1px);
+  }
+  .acc-link.is-active{
+    background:linear-gradient(135deg,#0f766e,#2563eb);
+    color:#f9fafb;
+    font-weight:600;
+    box-shadow:0 10px 25px rgba(37,99,235,.25);
+  }
+  .acc-link.is-active .acc-ico{
+    color:#e0f2fe;
+  }
+
+  .acc-link--muted{ color:#94a3b8; cursor:default; }
+  .acc-ico{
+    font-size:20px; line-height:1; width:22px; text-align:center;
+  }
+  .acc-text{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .acc-account{
+    border-top:1px solid #e5e7eb;
+    padding:8px 4px 10px;
+  }
+  .acc-link--profile{
+    background:#f8fafc;
+  }
+  .acc-link--profile:hover{
+    background:#e0f2fe;
+  }
+
+  .acc-foot{
+    border-top:1px solid #e5e7eb; padding:10px 14px;
+    font-size:12px; color:#64748b;
+    display:flex; justify-content:space-between;
+  }
+
+  .acc-backdrop{
+    position:fixed; inset:0; z-index:1035; background:rgba(15,23,42,.35);
+    opacity:0; transition:opacity .2s ease;
+  }
+  .acc-backdrop[aria-hidden="false"]{ opacity:1; }
+  .acc-backdrop[hidden]{ display:none; }
+
+  .acc-toggle{
+    position:fixed; left:14px; top:14px; z-index:1051;
+    width:44px; height:44px; border:1px solid #bfdbfe;
+    background:#ffffff;
+    box-shadow:0 6px 18px rgba(15,23,42,.16);
+    cursor:pointer; display:grid; place-items:center;
+    border-radius:999px;
+  }
+
+  @media (min-width:1280px){
+    body[data-acc-sidebar="collapsed"] .acc-with-sidebar{ margin-left:72px; }
+    body[data-acc-sidebar="collapsed"] .acc-sidebar{ width:72px; }
+    body[data-acc-sidebar="collapsed"] .acc-text,
+    body[data-acc-sidebar="collapsed"] .acc-sec{ display:none; }
+  }
+</style>
+
+<script>
+  (function(){
+    const sidebar   = document.getElementById('accSidebar');
+    const toggle    = document.getElementById('accSidebarToggle');
+    const icon      = document.getElementById('accSidebarToggleIcon');
+    const backdrop  = document.getElementById('accSidebarBackdrop');
+
+    function isDesktop(){ return matchMedia('(min-width:1024px)').matches; }
+
+    function setIcon(open){
+      if (!icon) return;
+      icon.textContent = open ? 'close' : 'menu';
+      toggle?.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      toggle?.setAttribute('title', open ? 'Close' : 'Menu');
+    }
+
+    function openSidebar(){
+      sidebar.setAttribute('data-open','true');
+      document.body.setAttribute('data-acc-sidebar','open');
+      backdrop.removeAttribute('hidden');
+      backdrop.setAttribute('aria-hidden','false');
+      setIcon(true);
+    }
+    function closeSidebar(){
+      if(isDesktop()) document.body.setAttribute('data-acc-sidebar','closed');
+      sidebar.setAttribute('data-open','false');
+      backdrop.setAttribute('hidden','');
+      backdrop.setAttribute('aria-hidden','true');
+      setIcon(false);
+    }
+    function toggleSidebar(){
+      (sidebar.getAttribute('data-open') === 'true') ? closeSidebar() : openSidebar();
+    }
+
+    // Initial state
+    if(isDesktop()){
+      openSidebar();
+    } else {
+      closeSidebar();
+    }
+
+    toggle?.addEventListener('click', toggleSidebar);
+    backdrop?.addEventListener('click', closeSidebar);
+    window.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSidebar(); });
+    window.addEventListener('resize', ()=>{
+      if(isDesktop()){
+        openSidebar();
+      } else {
+        closeSidebar();
+        document.body.removeAttribute('data-acc-sidebar');
+      }
+    });
+
+    window.toggleAccSidebar = toggleSidebar;
+  })();
+</script>

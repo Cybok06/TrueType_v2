@@ -1,0 +1,210 @@
+<!-- templates/frontdesk_pages/front_desk_sidebar.html -->
+<style>
+  :root{
+    --fd-side-w: 264px;
+    --fd-z: 1040;
+    --fd-bg: #ffffff;         /* white sidebar */
+    --fd-fg: #0f172a;         /* slate-900 */
+    --fd-fg-dim:#475569;      /* slate-600 */
+    --fd-accent:#2563eb;      /* indigo-600 */
+    --fd-border:#e5e7eb;      /* slate-200 */
+    --fd-badge-bg:#eef2ff;    /* indigo-50 */
+    --fd-badge-ring:#c7d2fe;  /* indigo-200 */
+    --fd-backdrop: rgba(15, 23, 42, .45);
+  }
+
+  /* When sidebar is open on desktop, push layout */
+  @media (min-width: 992px){
+    body.fd-open { padding-left: var(--fd-side-w); }
+  }
+
+  /* Single sidebar for both desktop & mobile */
+  #fdSidebar{
+    position: fixed; inset: 0 auto 0 0; width: var(--fd-side-w);
+    background: var(--fd-bg); color: var(--fd-fg);
+    border-right: 1px solid var(--fd-border);
+    z-index: var(--fd-z);
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    display: flex; flex-direction: column;
+  }
+  #fdSidebar.fd-open{ transform: translateX(0); }
+
+  /* Backdrop for mobile overlay */
+  #fdBackdrop{
+    position: fixed; inset: 0; background: var(--fd-backdrop);
+    z-index: calc(var(--fd-z) - 1); display: none; opacity: 0;
+    transition: opacity .2s ease;
+  }
+  #fdBackdrop.show{ display:block; opacity: 1; }
+
+  /* Header */
+  .fd-brand{
+    display:flex; align-items:center; gap:.6rem; padding:.9rem 1rem;
+    border-bottom:1px solid var(--fd-border);
+  }
+  .fd-brand img{ height: 36px; display:block; }
+  .fd-brand .spacer{ flex:1; }
+
+  /* Single Toggle button (desktop & mobile) */
+  #fdToggle{
+    position: fixed; top: 12px; left: 12px; z-index: calc(var(--fd-z) + 1);
+    background: #fff; color: var(--fd-fg); border:1px solid var(--fd-border);
+    border-radius: .6rem; padding: .45rem .6rem; line-height: 1; cursor: pointer;
+    display: inline-flex; align-items: center; gap: .4rem;
+    box-shadow: 0 6px 22px rgba(15,23,42,.08);
+  }
+  #fdToggle svg{ width:18px; height:18px; }
+
+  /* IMPORTANT: when desktop sidebar is open, nudge the toggle so it doesn't sit over the logo */
+  @media (min-width: 992px){
+    body.fd-open #fdToggle{ left: calc(var(--fd-side-w) + 12px); }
+  }
+
+  /* Nav */
+  .fd-nav{ padding:.6rem .5rem 1rem; overflow:auto; }
+  .fd-section{
+    font-size:.73rem; text-transform:uppercase; color:var(--fd-fg-dim);
+    padding:.45rem 1rem .25rem; letter-spacing:.04em;
+  }
+  .fd-link{
+    display:flex; align-items:center; gap:.6rem; text-decoration:none;
+    color: var(--fd-fg); padding:.65rem .9rem; margin:.14rem .5rem;
+    border-radius:.65rem; transition: background .15s ease, box-shadow .15s ease, color .15s ease;
+    position: relative; border:1px solid transparent;
+    /* subtle “card-like” look */
+    box-shadow: 0 0 0 rgba(0,0,0,0);
+  }
+  .fd-link:hover{
+    background:#f8fafc;
+    border-color: var(--fd-border);
+    box-shadow: 0 6px 16px rgba(2,6,23,.06);
+  }
+  .fd-link.active{
+    background:#eff6ff; color:#0b3a97;
+    border-color: #dbeafe;
+    box-shadow: 0 8px 20px rgba(37,99,235,.10);
+  }
+
+  .fd-badge{
+    margin-left:auto; border-radius:999px; padding:.1rem .48rem; font-size:.72rem;
+    background: var(--fd-badge-bg); color:#111827; border:1px solid var(--fd-badge-ring);
+  }
+  .blink { animation: fdBlink 1.1s linear infinite; }
+  @keyframes fdBlink{
+    0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,.65); }
+    50% { box-shadow: 0 0 0 7px rgba(37,99,235,0); }
+  }
+
+  /* Desktop logic: open by default; mobile closed */
+  @media (min-width: 992px){
+    #fdSidebar{ transform: translateX(0); }
+    body:not(.fd-open) #fdSidebar{ transform: translateX(-100%); }
+    #fdBackdrop{ display:none !important; }
+  }
+</style>
+
+<!-- Single toggle -->
+<button id="fdToggle" aria-label="Toggle sidebar">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 12h18M3 18h18" stroke-width="2" stroke-linecap="round"/></svg>
+  Menu
+</button>
+
+<!-- Backdrop (mobile) -->
+<div id="fdBackdrop" role="button" aria-label="Close sidebar"></div>
+
+<!-- Sidebar -->
+<aside id="fdSidebar" aria-label="Truetype Services Sidebar">
+  <div class="fd-brand">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Truetype Services">
+    <div class="spacer"></div>
+  </div>
+
+  <nav class="fd-nav" id="fdNav">
+    <div class="fd-section">Main</div>
+    <a class="fd-link" href="/dashboard"><span>Dashboard</span></a>
+    <a class="fd-link" href="/frontdesk/documents"><span>Documents</span></a>
+    <a class="fd-link" href="/frontdesk/employees"><span>Employees</span></a>
+    <a class="fd-link" href="/frontdesk/leaves"><span>Leaves</span></a>
+    <a class="fd-link" href="/frontdesk/meetings">
+      <span>Meetings</span>
+      <span class="fd-badge" id="fdMeetingsBadge" style="display:none">0</span>
+    </a>
+    <a class="fd-link" href="/frontdesk/tasks">
+      <span>Tasks</span>
+      <span class="fd-badge" id="fdTasksBadge" style="display:none">0</span>
+    </a>
+  </nav>
+</aside>
+
+<script>
+(function(){
+  const body = document.body;
+  const sidebar = document.getElementById('fdSidebar');
+  const backdrop = document.getElementById('fdBackdrop');
+  const toggleBtn = document.getElementById('fdToggle');
+
+  const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
+
+  function openSidebar(){
+    sidebar.classList.add('fd-open');
+    if(!isDesktop()){ backdrop.classList.add('show'); }
+    if(isDesktop()){ body.classList.add('fd-open'); }
+  }
+  function closeSidebar(){
+    sidebar.classList.remove('fd-open');
+    backdrop.classList.remove('show');
+    body.classList.remove('fd-open');
+  }
+  function toggleSidebar(){
+    sidebar.classList.contains('fd-open') ? closeSidebar() : openSidebar();
+  }
+
+  toggleBtn.addEventListener('click', toggleSidebar);
+  backdrop.addEventListener('click', closeSidebar);
+
+  // Start state
+  if (isDesktop()) { openSidebar(); } else { closeSidebar(); }
+  window.addEventListener('resize', ()=>{ isDesktop() ? (backdrop.classList.remove('show'), openSidebar()) : (body.classList.remove('fd-open'), closeSidebar()); });
+
+  // Active link highlight
+  (function setActive(){
+    const path = location.pathname;
+    document.querySelectorAll('#fdNav .fd-link').forEach(a=>{
+      try{
+        const href = new URL(a.getAttribute('href'), location.origin).pathname;
+        const active = (path === href) || (href !== '/' && path.startsWith(href));
+        a.classList.toggle('active', active);
+      }catch(_){}
+    });
+  })();
+
+  // Counters from navbar API
+  async function loadCounters(){
+    try{
+      const r = await fetch('/frontdesk/api/navbar/counters');
+      if(!r.ok) return;
+      const j = await r.json();
+      const tasks = (j.tasks_undone ?? 0);
+      const meetings = (j.meetings_upcoming ?? 0);
+
+      function setBadge(id, n){
+        const el = document.getElementById(id);
+        if(!el) return;
+        if(n > 0){
+          el.textContent = n;
+          el.style.display = 'inline-block';
+          el.classList.add('blink');
+        } else {
+          el.style.display = 'none';
+          el.classList.remove('blink');
+        }
+      }
+      setBadge('fdTasksBadge', tasks);
+      setBadge('fdMeetingsBadge', meetings);
+    }catch(_){}
+  }
+  loadCounters();
+  setInterval(loadCounters, 30000);
+})();
+</script>

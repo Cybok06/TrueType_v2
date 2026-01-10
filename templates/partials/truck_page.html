@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Truck</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+</head>
+<body>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="fas fa-truck me-2 text-primary"></i> Truck Management</h4>
+    <button class="btn btn-outline-primary btn-sm" id="toggleTruckForm"><i class="fas fa-plus-circle me-1"></i> Add Truck</button>
+  </div>
+
+  <!-- Add Truck Form (Initially Hidden) -->
+  <div id="truckFormContainer" class="d-none">
+    <form id="truckForm" class="row g-3 bg-light p-3 rounded shadow-sm mb-4">
+      <div class="col-md-4">
+        <label class="form-label">Truck Number</label>
+        <input type="text" class="form-control" name="truck_number" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Product Carried</label>
+        <input type="text" class="form-control" name="product" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Capacity</label>
+        <input type="text" class="form-control" name="capacity" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Driver Name</label>
+        <input type="text" class="form-control" name="driver_name" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Driver Phone</label>
+        <input type="text" class="form-control" name="driver_phone" required>
+      </div>
+      <div class="col-12 text-end">
+        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-save me-1"></i> Save Truck</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Registered Trucks -->
+  <div class="mt-4">
+    <h5 class="mb-3">Registered Trucks</h5>
+    <div class="row g-3">
+      {% for t in trucks %}
+      <div class="col-md-6 col-lg-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h6 class="mb-1"><i class="fas fa-truck text-success me-1"></i> {{ t.truck_number }}</h6>
+            <p class="mb-1"><strong>Product:</strong> {{ t.product }} | <strong>Capacity:</strong> {{ "{:,.0f}".format((t.capacity or 0)|float) }}</p>
+            <p class="mb-1"><strong>Driver:</strong> {{ t.driver_name }} | {{ t.driver_phone }}</p>
+            <small class="text-muted">Registered on {{ t.created_at.strftime("%Y-%m-%d") }}</small>
+
+            <button class="btn btn-sm btn-outline-primary mt-3 w-100"
+              data-bs-toggle="modal"
+              data-bs-target="#initiateOrderModal"
+              data-id="{{ t._id }}">
+              <i class="fas fa-file-signature me-1"></i> Initiate Order
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Initiate Order Modal -->
+<div class="modal fade" id="initiateOrderModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form id="initiateOrderForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Initiate Truck Order</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="truck_id" id="truckId">
+
+        <!-- Toggle for New Client -->
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="newClientToggle">
+          <label class="form-check-label" for="newClientToggle">Add new client instead</label>
+        </div>
+
+        <!-- Existing Client Select -->
+        <div class="mb-3 client-select">
+          <label class="form-label">Select Existing Client</label>
+          <select class="form-select" name="client_id">
+            <option value="">-- Select Client --</option>
+            {% for c in clients %}
+              <option value="{{ c._id }}">{{ c.name }} - {{ c.phone }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- New Client Input Fields -->
+        <div class="row new-client-fields d-none">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Client Name</label>
+            <input type="text" class="form-control" name="client_name">
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Client Phone</label>
+            <input type="text" class="form-control" name="client_phone">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Destination</label>
+          <input type="text" class="form-control" name="destination" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Total Debt (GHS)</label>
+          <input type="number" class="form-control" name="total_debt" step="0.01" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary w-100" type="submit">Submit Order</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="container py-4">
+  <h4 class="mb-4"><i class="fas fa-list me-2 text-primary"></i> Active Deliveries</h4>
+
+  {% if orders %}
+  <div class="row g-3">
+    {% for order in orders %}
+    <div class="col-md-6 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body" data-order-id="{{ order._id }}">
+          <h6 class="mb-1"><i class="fas fa-truck text-success me-2"></i>{{ order.truck_number }}</h6>
+          <p class="mb-1"><strong>Driver:</strong> {{ order.driver_name }} ({{ order.driver_phone }})</p>
+          <p class="mb-1"><strong>Client:</strong> {{ order.client_name }} ({{ order.client_phone }})</p>
+          <p class="mb-1"><strong>Destination:</strong> {{ order.destination }}</p>
+
+          <!-- Thousand separator applied -->
+          <p class="mb-1"><strong>Total Debt:</strong> GHS {{ "{:,.2f}".format(order['total_debt']) if order.get('total_debt') else "0.00" }}</p>
+
+          <p class="mb-1"><strong>Status:</strong> <span class="badge bg-info status-text">{{ order.status }}</span></p>
+
+          {% if order.started_at %}
+          <p class="mb-1 started-text"><strong>Started At:</strong> {{ order.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+          {% endif %}
+          {% if order.delivered_at %}
+          <p class="mb-1 text-primary delivered-text"><strong>Delivered At:</strong> {{ order.delivered_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+          {% endif %}
+
+          <div class="expense-section">
+            {% if order.expenses %}
+              {% for exp in order.expenses %}
+              <div class="small text-muted">
+                💸 {{ exp.get('label', 'N/A') }}: GHS {{ "{:,.2f}".format(exp.get('amount', 0)) }}
+                {% if exp.get('created_at') %} ({{ exp.created_at.strftime('%Y-%m-%d %H:%M') }}) {% endif %}
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+
+          {% if order.expenses %}
+          <div class="fw-bold text-dark mb-1">
+            Total Expenses: GHS {{ "{:,.2f}".format(order.expenses | sum(attribute='amount')) }}
+          </div>
+          {% endif %}
+
+          {% if order.status != "Delivered" %}
+          <!-- Expense Form -->
+          <form class="mt-3 expense-form" data-id="{{ order._id }}">
+            <div class="mb-2">
+              <input type="text" class="form-control form-control-sm mb-2" name="label" placeholder="Expense Description" required>
+              <input type="number" step="0.01" class="form-control form-control-sm" name="amount" placeholder="Amount" required>
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-warning w-100">➕ Add Expense</button>
+          </form>
+
+          <div class="d-flex gap-2 mt-3 action-buttons">
+            {% if order.status == "pending" %}
+            <button class="btn btn-sm btn-outline-success w-100 start-btn" data-id="{{ order._id }}">▶ Start</button>
+            {% endif %}
+            {% if order.status == "enroute" %}
+            <button class="btn btn-sm btn-outline-danger w-100 end-btn" data-id="{{ order._id }}">✔ End</button>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-warning">No active orders yet.</div>
+  {% endif %}
+</div>
+
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Toggle add truck form
+  $('#toggleTruckForm').click(function () {
+    $('#truckFormContainer').toggleClass('d-none');
+  });
+
+  // Submit New Truck
+  $('#truckForm').submit(function (e) {
+    e.preventDefault();
+    const formData = {};
+    $('#truckForm').serializeArray().forEach(i => formData[i.name] = i.value);
+    $.ajax({
+      url: '/trucks/add',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(formData),
+      success: function (res) {
+        if (res.success) location.reload();
+        else alert(res.message || "Error adding truck.");
+      }
+    });
+  });
+
+  // Toggle between select and new client
+  $('#newClientToggle').on('change', function () {
+    if ($(this).is(':checked')) {
+      $('.client-select').addClass('d-none');
+      $('.new-client-fields').removeClass('d-none');
+      $('select[name="client_id"]').val('');
+    } else {
+      $('.client-select').removeClass('d-none');
+      $('.new-client-fields').addClass('d-none');
+      $('input[name="client_name"], input[name="client_phone"]').val('');
+    }
+  });
+
+  // Fill truck ID into modal
+  const modal = document.getElementById('initiateOrderModal');
+  modal.addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const truckId = button.getAttribute('data-id');
+    document.getElementById('truckId').value = truckId;
+
+    // Reset modal fields
+    $('#newClientToggle').prop('checked', false).trigger('change');
+    $('#initiateOrderForm')[0].reset();
+  });
+
+  // Submit Truck Order
+  $('#initiateOrderForm').submit(function (e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const data = {};
+    formData.forEach((value, key) => {
+      if (value) data[key] = value;
+    });
+
+    fetch("/trucks/initiate_order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(result => {
+      if (result.success) {
+        alert("✅ Order initiated successfully.");
+        location.reload();
+      } else {
+        alert("❌ " + (result.message || "Error submitting order."));
+      }
+    });
+  });
+</script>
+<script>
+  // Start Order
+  $(document).on('click', '.start-btn', function () {
+    const btn = $(this);
+    const id = btn.data('id');
+    fetch(`/truck_orders/start/${id}`, { method: 'POST' })
+      .then(res => res.json())
+      .then(r => {
+        if (r.success) {
+          const cardBody = btn.closest('.card-body');
+          cardBody.find('.status-text').text('enroute');
+          cardBody.find('.action-buttons').html(`
+            <button class="btn btn-sm btn-outline-danger w-100 end-btn" data-id="${id}">✔ End</button>
+          `);
+          cardBody.find('.started-text').remove();
+          cardBody.prepend(`<p class='mb-1 started-text'><strong>Started At:</strong> ${r.started_at}</p>`);
+        } else {
+          alert(r.message || 'Failed to start delivery');
+        }
+      });
+  });
+
+  // Complete Order
+  $(document).on('click', '.end-btn', function () {
+    const btn = $(this);
+    const id = btn.data('id');
+    fetch(`/truck_orders/complete/${id}`, { method: 'POST' })
+      .then(res => res.json())
+      .then(r => {
+        if (r.success) {
+          const cardBody = btn.closest('.card-body');
+          cardBody.find('.status-text').text('Delivered');
+          cardBody.find('.action-buttons').remove();
+          cardBody.find('.expense-form').remove();
+          cardBody.find('.delivered-text').remove();
+          cardBody.prepend(`<p class='mb-1 text-primary delivered-text'><strong>Delivered At:</strong> ${r.delivered_at}</p>`);
+        } else {
+          alert(r.message || 'Failed to complete delivery');
+        }
+      });
+  });
+
+  // Add Expense (ensure thousand separators when appending)
+  const gh2 = new Intl.NumberFormat('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  $(document).on('submit', '.expense-form', function (e) {
+    e.preventDefault();
+    const form = $(this);
+    const id = form.data('id');
+    const label = form.find('[name="label"]').val().trim();
+    const amount = form.find('[name="amount"]').val();
+    const section = form.siblings('.expense-section');
+
+    if (!label || !amount) return alert("Fill both label and amount");
+
+    fetch(`/truck_orders/add_expense/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, amount })
+    })
+      .then(res => res.json())
+      .then(r => {
+        if (r.success) {
+          const exp = r.expense;
+          const amtFmt = gh2.format(Number(exp.amount || 0));
+          section.append(`<div class='small text-muted'>💸 ${exp.label}: GHS ${amtFmt} (${exp.created_at})</div>`);
+          form[0].reset();
+        } else {
+          alert(r.message || 'Failed to add expense');
+        }
+      });
+  });
+</script>
+
+</body>
+</html>

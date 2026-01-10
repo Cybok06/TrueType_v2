@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Trading Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    body {
+      background: #f3f4f6;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .report-shell {
+      max-width: 1400px;
+    }
+    .report-card {
+      background: #ffffff;
+      border-radius: 1rem;
+      box-shadow: 0 1rem 2rem rgba(15, 23, 42, .08);
+      padding: 1.5rem 1.5rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .report-title {
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: #111827;
+    }
+    .report-subtitle {
+      font-size: .8rem;
+      color: #6b7280;
+    }
+    .kpi-card {
+      border-radius: .9rem;
+      border: 1px solid #e5e7eb;
+      padding: .9rem .95rem;
+      background: linear-gradient(135deg, #f9fafb, #eff6ff);
+    }
+    .kpi-label {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #6b7280;
+    }
+    .kpi-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #111827;
+    }
+    .kpi-sub {
+      font-size: .76rem;
+      color: #9ca3af;
+    }
+    .badge-pill {
+      border-radius: 999px;
+    }
+
+    /* Company header */
+    .company-logo img {
+      max-height: 52px;
+      object-fit: contain;
+    }
+    .company-name {
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      font-size: .82rem;
+      color: #111827;
+    }
+    .company-sub {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: #f97316;
+    }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2050;
+    }
+    .loading-overlay.d-none {
+      display: none !important;
+    }
+    .spinner-inner {
+      width: 72px;
+      height: 72px;
+      border-radius: 999px;
+      border: 4px solid rgba(209,213,219,.8);
+      border-top-color: #0d6efd;
+      animation: spin 0.85s linear infinite;
+      background: #ffffff;
+      box-shadow: 0 10px 30px rgba(15,23,42,.35);
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Charts */
+    .chart-container {
+      position: relative;
+    }
+    .chart-wrapper {
+      position: relative;
+      min-height: 260px;
+    }
+    .chart-wrapper canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Comparison card */
+    .compare-label {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: #6b7280;
+    }
+    .compare-title {
+      font-size: .88rem;
+      font-weight: 600;
+      color: #111827;
+    }
+    .compare-metric-label {
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #9ca3af;
+    }
+    .compare-metric-value {
+      font-size: .98rem;
+      font-weight: 700;
+    }
+    .compare-delta {
+      font-size: .76rem;
+    }
+
+    /* Scope wrapper for watermark on print */
+    .print-scope {
+      position: relative;
+    }
+
+    @media print {
+      /* Page setup for PDF */
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+
+      body {
+        background: #ffffff;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      /* Hide nav / sidebar / filters / overlays when printing */
+      .sidebar,
+      .admin-sidebar,
+      #adminSidebar,
+      .navbar,
+      .nav,
+      .no-print,
+      #loadingOverlay,
+      .loading-overlay {
+        display: none !important;
+      }
+
+      /* Ensure the main report is visible and full-width */
+      .print-scope {
+        display: block !important;
+        position: relative;
+      }
+
+      .report-shell {
+        max-width: 100% !important;
+        margin: 0 auto;
+      }
+
+      .report-card {
+        box-shadow: none;
+        border-radius: 0;
+        margin-bottom: .5rem;
+        position: relative;
+        z-index: 1;
+        background-color: rgba(255,255,255,0.96);
+      }
+
+      .chart-container {
+        page-break-inside: avoid;
+      }
+
+      .chart-wrapper {
+        min-height: 200px;
+      }
+
+      table {
+        font-size: .75rem;
+      }
+
+      /* Watermark logo in the middle when printing/exporting */
+      .print-scope::before {
+        content: "";
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 70%;
+        height: 70%;
+        background: url('https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif') no-repeat center center;
+        background-size: contain;
+        opacity: 0.08;
+        z-index: 0;
+        pointer-events: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+{% include 'partials/admin_sidebar.html' ignore missing %}
+
+<div id="loadingOverlay" class="loading-overlay d-none">
+  <div class="spinner-inner"></div>
+</div>
+
+<div class="container-xxl report-shell my-3 print-scope">
+
+  <!-- Company header -->
+  <div class="report-card">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="company-logo">
+          <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif"
+               alt="TRUETYPE GROUP HOLDINGS">
+        </div>
+        <div>
+          <div class="company-name">TRUETYPE GROUP HOLDINGS</div>
+          <div class="company-sub">TRADING &amp; COLLECTIONS REPORT</div>
+        </div>
+      </div>
+      <div class="text-end small text-muted">
+        <div id="rangeLabelHeader">{{ summary.range_label }}</div>
+        <div>Generated <span id="generatedAt"></span> UTC</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header + Filters (screen only) -->
+  <div class="report-card no-print">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <div>
+        <div class="report-title">Trading &amp; Collections Report</div>
+        <div class="report-subtitle" id="rangeLabelSub">
+          {{ summary.range_label }}
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="printBtn">
+          <i class="bi bi-printer me-1"></i> Print / Save as PDF
+        </button>
+      </div>
+    </div>
+
+    <form id="filterForm" class="row g-2 align-items-end" method="get" action="">
+      <div class="col-md-3 col-sm-6">
+        <label class="form-label small fw-semibold">Range</label>
+        <select class="form-select form-select-sm" name="range" id="rangeSelect">
+          <option value="today"  {% if range_key == 'today' %}selected{% endif %}>Today</option>
+          <option value="week"   {% if range_key == 'week' %}selected{% endif %}>This Week</option>
+          <option value="month"  {% if range_key == 'month' %}selected{% endif %}>This Month</option>
+          <option value="custom" {% if range_key == 'custom' %}selected{% endif %}>Custom</option>
+        </select>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <label class="form-label small fw-semibold">Start date</label>
+        <input type="date" name="start" id="startDate" value="{{ start_date }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <label class="form-label small fw-semibold">End date</label>
+        <input type="date" name="end" id="endDate" value="{{ end_date }}" class="form-control form-control-sm">
+      </div>
+
+      <!-- Compare toggle -->
+      <div class="col-12 mt-2">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="compareToggle" name="compare" value="1"
+                 {% if compare_enabled %}checked{% endif %}>
+          <label class="form-check-label small fw-semibold" for="compareToggle">
+            Compare with another period
+          </label>
+        </div>
+      </div>
+
+      <!-- Compare fields -->
+      <div id="compareFields" class="row g-2 mt-1 {% if not compare_enabled %}d-none{% endif %}">
+        <div class="col-md-3 col-sm-6">
+          <label class="form-label small fw-semibold">Compare Range</label>
+          <select class="form-select form-select-sm" name="cmp_range" id="cmpRangeSelect">
+            <option value="today"  {% if cmp_range_key == 'today' %}selected{% endif %}>Today</option>
+            <option value="week"   {% if cmp_range_key == 'week' %}selected{% endif %}>This Week</option>
+            <option value="month"  {% if cmp_range_key == 'month' %}selected{% endif %}>This Month</option>
+            <option value="custom" {% if cmp_range_key == 'custom' %}selected{% endif %}>Custom</option>
+          </select>
+        </div>
+        <div class="col-md-3 col-sm-6">
+          <label class="form-label small fw-semibold">Compare Start</label>
+          <input type="date" name="cmp_start" id="cmpStartDate"
+                 value="{{ cmp_start_date or '' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3 col-sm-6">
+          <label class="form-label small fw-semibold">Compare End</label>
+          <input type="date" name="cmp_end" id="cmpEndDate"
+                 value="{{ cmp_end_date or '' }}" class="form-control form-control-sm">
+        </div>
+      </div>
+
+      <div class="col-md-3 col-sm-6 d-flex gap-2 justify-content-end mt-2">
+        <button type="submit" class="btn btn-primary btn-sm mt-3 mt-md-0" id="generateBtn">
+          <i class="bi bi-arrow-repeat me-1"></i> Generate
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- KPI row (main period) -->
+  <div class="report-card">
+    <div class="row g-3">
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card">
+          <div class="kpi-label">Orders</div>
+          <div class="d-flex justify-content-between align-items-end">
+            <div class="kpi-value" id="kpiTotalOrders">{{ summary.total_orders }}</div>
+            <div class="kpi-sub">
+              <span class="text-success">
+                <i class="bi bi-check-circle-fill me-1"></i>
+                <span id="kpiApprovedOrders">{{ summary.approved_orders }}</span>
+              </span>
+              &bull;
+              <span class="text-warning">
+                <i class="bi bi-hourglass-split me-1"></i>
+                <span id="kpiPendingOrders">{{ summary.pending_orders }}</span>
+              </span>
+              &bull;
+              <span class="text-danger">
+                <i class="bi bi-x-circle-fill me-1"></i>
+                <span id="kpiDeclinedOrders">{{ summary.declined_orders }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card">
+          <div class="kpi-label">Quantity (Total)</div>
+          <div class="kpi-value" id="kpiTotalQty">{{ "%.0f"|format(summary.total_quantity or 0) }}</div>
+          <div class="kpi-sub">All products, all order types</div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Debt</div>
+          <div class="kpi-value" id="kpiTotalDebt">GHS {{ "%.2f"|format(summary.total_debt or 0) }}</div>
+          <div class="kpi-sub">Gross exposure for the period</div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card">
+          <div class="kpi-label">Outstanding</div>
+          <div class="kpi-value text-danger" id="kpiOutstanding">GHS {{ "%.2f"|format(summary.outstanding_total or 0) }}</div>
+          <div class="kpi-sub">After confirmed collections</div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card mt-2">
+          <div class="kpi-label">Returns (Margin)</div>
+          <div class="kpi-value text-success" id="kpiReturns">GHS {{ "%.2f"|format(summary.total_returns or 0) }}</div>
+          <div class="kpi-sub">Price + tax returns combined</div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card mt-2">
+          <div class="kpi-label">Order Collections</div>
+          <div class="kpi-value" id="kpiOrderCollections">GHS {{ "%.2f"|format(summary.order_payments_total or 0) }}</div>
+          <div class="kpi-sub">Confirmed client payments</div>
+        </div>
+      </div>
+      <div class="col-md-3 col-sm-6">
+        <div class="kpi-card mt-2">
+          <div class="kpi-label">Truck Collections</div>
+          <div class="kpi-value" id="kpiTruckCollections">GHS {{ "%.2f"|format(summary.truck_payments_total or 0) }}</div>
+          <div class="kpi-sub">Confirmed truck payments</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison card wrapper (JS will override / clear as needed) -->
+  <div id="compareCardWrapper">
+    {% if compare_enabled and compare_summary %}
+    <div class="report-card">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <div class="compare-label">Comparison</div>
+          <div class="compare-title">
+            Current: {{ summary.range_label }} &nbsp;vs&nbsp; Base: {{ compare_summary.range_label }}
+          </div>
+        </div>
+      </div>
+      <div class="row g-3">
+        {% set base_orders = compare_summary.total_orders or 0 %}
+        {% set now_orders  = summary.total_orders or 0 %}
+        {% set d_orders = now_orders - base_orders %}
+
+        {% set base_debt = compare_summary.total_debt or 0 %}
+        {% set now_debt  = summary.total_debt or 0 %}
+        {% set d_debt = now_debt - base_debt %}
+
+        {% set base_out = compare_summary.outstanding_total or 0 %}
+        {% set now_out  = summary.outstanding_total or 0 %}
+        {% set d_out = now_out - base_out %}
+
+        {% set base_col = (compare_summary.order_payments_total or 0) + (compare_summary.truck_payments_total or 0) %}
+        {% set now_col  = (summary.order_payments_total or 0) + (summary.truck_payments_total or 0) %}
+        {% set d_col = now_col - base_col %}
+
+        <div class="col-md-3 col-sm-6">
+          <div class="kpi-card">
+            <div class="compare-metric-label">Orders</div>
+            <div class="d-flex justify-content-between align-items-end">
+              <div>
+                <div class="compare-metric-value">{{ now_orders }}</div>
+                <div class="kpi-sub">Base: {{ base_orders }}</div>
+              </div>
+              <div class="compare-delta text-end">
+                {% if d_orders > 0 %}
+                  <span class="text-success"><i class="bi bi-arrow-up-right"></i> +{{ d_orders }}</span>
+                {% elif d_orders < 0 %}
+                  <span class="text-danger"><i class="bi bi-arrow-down-right"></i> {{ d_orders }}</span>
+                {% else %}
+                  <span class="text-muted">No change</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+          <div class="kpi-card">
+            <div class="compare-metric-label">Total Debt (GHS)</div>
+            <div class="d-flex justify-content-between align-items-end">
+              <div>
+                <div class="compare-metric-value">{{ "%.2f"|format(now_debt) }}</div>
+                <div class="kpi-sub">Base: {{ "%.2f"|format(base_debt) }}</div>
+              </div>
+              <div class="compare-delta text-end">
+                {% if d_debt > 0 %}
+                  <span class="text-danger"><i class="bi bi-arrow-up-right"></i> +{{ "%.2f"|format(d_debt) }}</span>
+                {% elif d_debt < 0 %}
+                  <span class="text-success"><i class="bi bi-arrow-down-right"></i> {{ "%.2f"|format(d_debt) }}</span>
+                {% else %}
+                  <span class="text-muted">No change</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+          <div class="kpi-card">
+            <div class="compare-metric-label">Outstanding (GHS)</div>
+            <div class="d-flex justify-content-between align-items-end">
+              <div>
+                <div class="compare-metric-value">{{ "%.2f"|format(now_out) }}</div>
+                <div class="kpi-sub">Base: {{ "%.2f"|format(base_out) }}</div>
+              </div>
+              <div class="compare-delta text-end">
+                {% if d_out > 0 %}
+                  <span class="text-danger"><i class="bi bi-arrow-up-right"></i> +{{ "%.2f"|format(d_out) }}</span>
+                {% elif d_out < 0 %}
+                  <span class="text-success"><i class="bi bi-arrow-down-right"></i> {{ "%.2f"|format(d_out) }}</span>
+                {% else %}
+                  <span class="text-muted">No change</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+          <div class="kpi-card">
+            <div class="compare-metric-label">Collections (GHS)</div>
+            <div class="d-flex justify-content-between align-items-end">
+              <div>
+                <div class="compare-metric-value">{{ "%.2f"|format(now_col) }}</div>
+                <div class="kpi-sub">Base: {{ "%.2f"|format(base_col) }}</div>
+              </div>
+              <div class="compare-delta text-end">
+                {% if d_col > 0 %}
+                  <span class="text-success"><i class="bi bi-arrow-up-right"></i> +{{ "%.2f"|format(d_col) }}</span>
+                {% elif d_col < 0 %}
+                  <span class="text-danger"><i class="bi bi-arrow-down-right"></i> {{ "%.2f"|format(d_col) }}</span>
+                {% else %}
+                  <span class="text-muted">No change</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Charts -->
+  <div class="report-card chart-container">
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <h6 class="text-muted text-uppercase small mb-2">Orders vs Collections</h6>
+        <div class="chart-wrapper">
+          <canvas id="chartDebtCollections"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <h6 class="text-muted text-uppercase small mb-2">Orders Count</h6>
+        <div class="chart-wrapper">
+          <canvas id="chartOrdersCount"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orders table -->
+  <div class="report-card">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="text-muted text-uppercase small mb-0">Orders Detail</h6>
+      <span class="badge bg-light text-secondary border badge-pill" id="ordersCountBadge">
+        {{ orders|length }} orders in period
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Order ID</th>
+          <th>Client</th>
+          <th>Product</th>
+          <th>Type</th>
+          <th class="text-end">Qty</th>
+          <th class="text-end">Debt</th>
+          <th class="text-end">Paid</th>
+          <th class="text-end">Outstanding</th>
+          <th>Status</th>
+        </tr>
+        </thead>
+        <tbody id="ordersTbody">
+        {% for o in orders %}
+          <tr>
+            <td class="small">
+              {% if o.date %}{{ o.date.strftime('%d-%b-%y') }}{% endif %}
+            </td>
+            <td class="small">
+              {{ o.order_id or o._id }}
+            </td>
+            <td class="small text-truncate" style="max-width: 160px;">
+              {{ o.client_name }}{% if o.client_code %} ({{ o.client_code }}){% endif %}
+            </td>
+            <td class="small">{{ o.product or '' }}</td>
+            <td class="small text-uppercase">{{ o.order_type or '' }}</td>
+            <td class="text-end small">{{ "%.0f"|format(o.quantity or 0) }}</td>
+            <td class="text-end small money-cell" data-money="{{ o.total_debt or 0 }}">
+              GHS {{ "%.2f"|format(o.total_debt or 0) }}
+            </td>
+            <td class="text-end small text-success money-cell" data-money="{{ o.paid_amount or 0 }}">
+              GHS {{ "%.2f"|format(o.paid_amount or 0) }}
+            </td>
+            <td class="text-end small money-cell {% if o.outstanding > 0 %}text-danger{% endif %}"
+                data-money="{{ o.outstanding or 0 }}">
+              GHS {{ "%.2f"|format(o.outstanding or 0) }}
+            </td>
+            <td class="small">
+              {% set st = (o.status or '').lower() %}
+              {% if st == 'approved' %}
+                <span class="badge bg-success-subtle text-success border">Approved</span>
+              {% elif st == 'declined' %}
+                <span class="badge bg-danger-subtle text-danger border">Declined</span>
+              {% else %}
+                <span class="badge bg-warning-subtle text-warning border">Pending</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- BDC & OMC summary -->
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="report-card">
+        <h6 class="text-muted text-uppercase small mb-2">BDC Payables</h6>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+              <th>BDC</th>
+              <th class="text-end">Count</th>
+              <th class="text-end">Total Amount (GHS)</th>
+            </tr>
+            </thead>
+            <tbody id="bdcTbody">
+            {% for r in bdc_summary %}
+              <tr>
+                <td class="small">{{ r.bdc_name }}</td>
+                <td class="text-end small">{{ r.count }}</td>
+                <td class="text-end small money-cell" data-money="{{ r.total_amount or 0 }}">
+                  GHS {{ "%.2f"|format(r.total_amount or 0) }}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="text-muted small">No BDC payables in this period.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="report-card">
+        <h6 class="text-muted text-uppercase small mb-2">OMC Returns</h6>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+              <th>OMC</th>
+              <th class="text-end">Count</th>
+              <th class="text-end">Total Amount (GHS)</th>
+            </tr>
+            </thead>
+            <tbody id="omcTbody">
+            {% for r in omc_summary %}
+              <tr>
+                <td class="small">{{ r.omc_name }}</td>
+                <td class="text-end small">{{ r.count }}</td>
+                <td class="text-end small money-cell" data-money="{{ r.total_amount or 0 }}">
+                  GHS {{ "%.2f"|format(r.total_amount or 0) }}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="text-muted small">No OMC returns in this period.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payments table -->
+  <div class="report-card">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="text-muted text-uppercase small mb-0">Collections (Order &amp; Truck Payments)</h6>
+      <span class="badge bg-light text-secondary border badge-pill" id="paymentsCountBadge">
+        {{ payments|length }} payments in period
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th class="text-end">Amount (GHS)</th>
+          <th>Bank</th>
+          <th>Account</th>
+          <th>Status</th>
+        </tr>
+        </thead>
+        <tbody id="paymentsTbody">
+        {% for p in payments %}
+          <tr>
+            <td class="small">
+              {% if p.date %}{{ p.date.strftime('%d-%b-%y %H:%M') }}{% endif %}
+            </td>
+            <td class="small">{{ p.type }}</td>
+            <td class="text-end small money-cell" data-money="{{ p.amount or 0 }}">
+              GHS {{ "%.2f"|format(p.amount or 0) }}
+            </td>
+            <td class="small">{{ p.bank_name }}</td>
+            <td class="small">{{ p.account_last4 }}</td>
+            <td class="small">
+              {% set st = (p.status or '').lower() %}
+              {% if st == 'confirmed' %}
+                <span class="badge bg-success-subtle text-success border">Confirmed</span>
+              {% elif st == 'rejected' %}
+                <span class="badge bg-danger-subtle text-danger border">Rejected</span>
+              {% else %}
+                <span class="badge bg-warning-subtle text-warning border">Pending</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="text-muted small">No payments in this period.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const filterForm     = document.getElementById('filterForm');
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const printBtn       = document.getElementById('printBtn');
+
+  const rangeSelect    = document.getElementById('rangeSelect');
+  const startDate      = document.getElementById('startDate');
+  const endDate        = document.getElementById('endDate');
+
+  const compareToggle  = document.getElementById('compareToggle');
+  const compareFields  = document.getElementById('compareFields');
+  const cmpRangeSelect = document.getElementById('cmpRangeSelect');
+  const cmpStartDate   = document.getElementById('cmpStartDate');
+  const cmpEndDate     = document.getElementById('cmpEndDate');
+
+  const rangeLabelHeader = document.getElementById('rangeLabelHeader');
+  const rangeLabelSub    = document.getElementById('rangeLabelSub');
+
+  // KPI elements
+  const kpiTotalOrders       = document.getElementById('kpiTotalOrders');
+  const kpiApprovedOrders    = document.getElementById('kpiApprovedOrders');
+  const kpiPendingOrders     = document.getElementById('kpiPendingOrders');
+  const kpiDeclinedOrders    = document.getElementById('kpiDeclinedOrders');
+  const kpiTotalQty          = document.getElementById('kpiTotalQty');
+  const kpiTotalDebt         = document.getElementById('kpiTotalDebt');
+  const kpiOutstanding       = document.getElementById('kpiOutstanding');
+  const kpiReturns           = document.getElementById('kpiReturns');
+  const kpiOrderCollections  = document.getElementById('kpiOrderCollections');
+  const kpiTruckCollections  = document.getElementById('kpiTruckCollections');
+
+  // Count badges
+  const ordersCountBadge   = document.getElementById('ordersCountBadge');
+  const paymentsCountBadge = document.getElementById('paymentsCountBadge');
+
+  // Tables
+  const ordersTbody   = document.getElementById('ordersTbody');
+  const bdcTbody      = document.getElementById('bdcTbody');
+  const omcTbody      = document.getElementById('omcTbody');
+  const paymentsTbody = document.getElementById('paymentsTbody');
+
+  // Compare card wrapper
+  const compareCardWrapper = document.getElementById('compareCardWrapper');
+
+  // Charts
+  const ctx1 = document.getElementById('chartDebtCollections');
+  const ctx2 = document.getElementById('chartOrdersCount');
+  let chartDebtCollectionsInstance = null;
+  let chartOrdersCountInstance     = null;
+
+  function money2(n) {
+    return Number(n || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+  function int0(n) {
+    return Number(n || 0) || 0;
+  }
+
+  // Format server-rendered money cells (initial load)
+  function formatServerMoneyCells() {
+    const cells = document.querySelectorAll('.money-cell');
+    cells.forEach(cell => {
+      const raw = Number(cell.dataset.money || 0);
+      cell.textContent = 'GHS ' + money2(raw);
+    });
+  }
+
+  // Generated timestamp (client-side)
+  function updateGeneratedAt() {
+    const genEl = document.getElementById('generatedAt');
+    if (!genEl) return;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const stamp = pad(now.getDate()) + '-' + months[now.getMonth()] + '-' +
+                  now.getFullYear() + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    genEl.textContent = stamp;
+  }
+
+  // Range / custom dates
+  function updateDateInputs() {
+    if (!rangeSelect) return;
+    const isCustom = rangeSelect.value === 'custom';
+    if (startDate) {
+      startDate.disabled = !isCustom;
+      startDate.classList.toggle('bg-light', !isCustom);
+    }
+    if (endDate) {
+      endDate.disabled = !isCustom;
+      endDate.classList.toggle('bg-light', !isCustom);
+    }
+  }
+  function updateCompareDateInputs() {
+    if (!cmpRangeSelect) return;
+    const isCustomCmp = cmpRangeSelect.value === 'custom';
+    if (cmpStartDate) {
+      cmpStartDate.disabled = !isCustomCmp;
+      cmpStartDate.classList.toggle('bg-light', !isCustomCmp);
+    }
+    if (cmpEndDate) {
+      cmpEndDate.disabled = !isCustomCmp;
+      cmpEndDate.classList.toggle('bg-light', !isCustomCmp);
+    }
+  }
+
+  updateDateInputs();
+  if (rangeSelect) {
+    rangeSelect.addEventListener('change', updateDateInputs);
+  }
+  if (compareToggle && compareFields) {
+    compareToggle.addEventListener('change', function () {
+      if (this.checked) {
+        compareFields.classList.remove('d-none');
+      } else {
+        compareFields.classList.add('d-none');
+      }
+    });
+  }
+  if (cmpRangeSelect) {
+    updateCompareDateInputs();
+    cmpRangeSelect.addEventListener('change', updateCompareDateInputs);
+  }
+
+  if (printBtn) {
+    printBtn.addEventListener('click', function () {
+      window.print();
+    });
+  }
+
+  // Charts
+  function renderCharts(chartsData) {
+    if (!chartsData || !ctx1 || !ctx2 || !window.Chart) return;
+
+    if (chartDebtCollectionsInstance) {
+      chartDebtCollectionsInstance.destroy();
+    }
+    if (chartOrdersCountInstance) {
+      chartOrdersCountInstance.destroy();
+    }
+
+    chartDebtCollectionsInstance = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: chartsData.labels || [],
+        datasets: [
+          {
+            label: 'Total Debt (GHS)',
+            data: chartsData.debt_per_day || [],
+            borderWidth: 2,
+            tension: 0.25
+          },
+          {
+            label: 'Collections (GHS)',
+            data: chartsData.collection_per_day || [],
+            borderWidth: 2,
+            borderDash: [4, 3],
+            tension: 0.25
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+          y: { beginAtZero: true }
+        },
+        plugins: {
+          legend: {
+            labels: {
+              boxWidth: 16,
+              boxHeight: 16
+            }
+          }
+        }
+      }
+    });
+
+    chartOrdersCountInstance = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: chartsData.labels || [],
+        datasets: [
+          {
+            label: 'Orders Count',
+            data: chartsData.orders_count || [],
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+          y: { beginAtZero: true, precision: 0 }
+        }
+      }
+    });
+  }
+
+  // Render comparison card from JSON
+  function renderCompareCard(summary, compareSummary) {
+    if (!compareCardWrapper) return;
+    if (!compareSummary) {
+      compareCardWrapper.innerHTML = '';
+      return;
+    }
+
+    const base_orders = int0(compareSummary.total_orders);
+    const now_orders  = int0(summary.total_orders);
+    const d_orders    = now_orders - base_orders;
+
+    const base_debt = Number(compareSummary.total_debt || 0);
+    const now_debt  = Number(summary.total_debt || 0);
+    const d_debt    = now_debt - base_debt;
+
+    const base_out = Number(compareSummary.outstanding_total || 0);
+    const now_out  = Number(summary.outstanding_total || 0);
+    const d_out    = now_out - base_out;
+
+    const base_col = Number(compareSummary.order_payments_total || 0) +
+                     Number(compareSummary.truck_payments_total || 0);
+    const now_col  = Number(summary.order_payments_total || 0) +
+                     Number(summary.truck_payments_total || 0);
+    const d_col    = now_col - base_col;
+
+    function deltaBadge(num, positiveIsGood) {
+      if (num > 0) {
+        const cls = positiveIsGood ? 'text-success' : 'text-danger';
+        return `<span class="${cls}"><i class="bi bi-arrow-up-right"></i> +${money2(num)}</span>`;
+      } else if (num < 0) {
+        const cls = positiveIsGood ? 'text-danger' : 'text-success';
+        return `<span class="${cls}"><i class="bi bi-arrow-down-right"></i> ${money2(num)}</span>`;
+      }
+      return `<span class="text-muted">No change</span>`;
+    }
+
+    const html = `
+      <div class="report-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <div class="compare-label">Comparison</div>
+            <div class="compare-title">
+              Current: ${summary.range_label || ''} &nbsp;vs&nbsp; Base: ${compareSummary.range_label || ''}
+            </div>
+          </div>
+        </div>
+        <div class="row g-3">
+
+          <div class="col-md-3 col-sm-6">
+            <div class="kpi-card">
+              <div class="compare-metric-label">Orders</div>
+              <div class="d-flex justify-content-between align-items-end">
+                <div>
+                  <div class="compare-metric-value">${now_orders}</div>
+                  <div class="kpi-sub">Base: ${base_orders}</div>
+                </div>
+                <div class="compare-delta text-end">
+                  ${
+                    d_orders > 0
+                      ? `<span class="text-success"><i class="bi bi-arrow-up-right"></i> +${d_orders}</span>`
+                      : d_orders < 0
+                        ? `<span class="text-danger"><i class="bi bi-arrow-down-right"></i> ${d_orders}</span>`
+                        : `<span class="text-muted">No change</span>`
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-3 col-sm-6">
+            <div class="kpi-card">
+              <div class="compare-metric-label">Total Debt (GHS)</div>
+              <div class="d-flex justify-content-between align-items-end">
+                <div>
+                  <div class="compare-metric-value">${money2(now_debt)}</div>
+                  <div class="kpi-sub">Base: ${money2(base_debt)}</div>
+                </div>
+                <div class="compare-delta text-end">
+                  ${deltaBadge(d_debt, false)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-3 col-sm-6">
+            <div class="kpi-card">
+              <div class="compare-metric-label">Outstanding (GHS)</div>
+              <div class="d-flex justify-content-between align-items-end">
+                <div>
+                  <div class="compare-metric-value">${money2(now_out)}</div>
+                  <div class="kpi-sub">Base: ${money2(base_out)}</div>
+                </div>
+                <div class="compare-delta text-end">
+                  ${deltaBadge(d_out, false)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-3 col-sm-6">
+            <div class="kpi-card">
+              <div class="compare-metric-label">Collections (GHS)</div>
+              <div class="d-flex justify-content-between align-items-end">
+                <div>
+                  <div class="compare-metric-value">${money2(now_col)}</div>
+                  <div class="kpi-sub">Base: ${money2(base_col)}</div>
+                </div>
+                <div class="compare-delta text-end">
+                  ${deltaBadge(d_col, true)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `;
+    compareCardWrapper.innerHTML = html;
+  }
+
+  // Update KPIs from JSON summary
+  function applySummary(summary) {
+    if (!summary) return;
+    if (rangeLabelHeader) rangeLabelHeader.textContent = summary.range_label || '';
+    if (rangeLabelSub)    rangeLabelSub.textContent    = summary.range_label || '';
+
+    if (kpiTotalOrders)      kpiTotalOrders.textContent      = int0(summary.total_orders);
+    if (kpiApprovedOrders)   kpiApprovedOrders.textContent   = int0(summary.approved_orders);
+    if (kpiPendingOrders)    kpiPendingOrders.textContent    = int0(summary.pending_orders);
+    if (kpiDeclinedOrders)   kpiDeclinedOrders.textContent   = int0(summary.declined_orders);
+    if (kpiTotalQty)         kpiTotalQty.textContent         = int0(summary.total_quantity);
+    if (kpiTotalDebt)        kpiTotalDebt.textContent        = 'GHS ' + money2(summary.total_debt);
+    if (kpiOutstanding)      kpiOutstanding.textContent      = 'GHS ' + money2(summary.outstanding_total);
+    if (kpiReturns)          kpiReturns.textContent          = 'GHS ' + money2(summary.total_returns);
+    if (kpiOrderCollections) kpiOrderCollections.textContent = 'GHS ' + money2(summary.order_payments_total);
+    if (kpiTruckCollections) kpiTruckCollections.textContent = 'GHS ' + money2(summary.truck_payments_total);
+  }
+
+  // Render Orders table
+  function renderOrders(orders) {
+    if (!ordersTbody) return;
+    ordersTbody.innerHTML = '';
+    if (!orders || !orders.length) {
+      ordersTbody.innerHTML = `<tr><td colspan="10" class="text-muted small">No orders in this period.</td></tr>`;
+      if (ordersCountBadge) ordersCountBadge.textContent = '0 orders in period';
+      return;
+    }
+    orders.forEach(o => {
+      const status = (o.status || '').toLowerCase();
+      let statusBadge = '<span class="badge bg-warning-subtle text-warning border">Pending</span>';
+      if (status === 'approved') {
+        statusBadge = '<span class="badge bg-success-subtle text-success border">Approved</span>';
+      } else if (status === 'declined') {
+        statusBadge = '<span class="badge bg-danger-subtle text-danger border">Declined</span>';
+      }
+      const client = o.client_code
+        ? `${o.client_name || ''} (${o.client_code})`
+        : (o.client_name || '');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="small">${o.date || ''}</td>
+        <td class="small">${o.order_id || ''}</td>
+        <td class="small text-truncate" style="max-width: 160px;">${client}</td>
+        <td class="small">${o.product || ''}</td>
+        <td class="small text-uppercase">${o.order_type || ''}</td>
+        <td class="text-end small">${int0(o.quantity)}</td>
+        <td class="text-end small">GHS ${money2(o.total_debt)}</td>
+        <td class="text-end small text-success">GHS ${money2(o.paid_amount)}</td>
+        <td class="text-end small ${o.outstanding > 0 ? 'text-danger' : ''}">
+          GHS ${money2(o.outstanding)}
+        </td>
+        <td class="small">${statusBadge}</td>
+      `;
+      ordersTbody.appendChild(tr);
+    });
+    if (ordersCountBadge) {
+      ordersCountBadge.textContent = `${orders.length} orders in period`;
+    }
+  }
+
+  // Render BDC table
+  function renderBDC(bdcList) {
+    if (!bdcTbody) return;
+    bdcTbody.innerHTML = '';
+    if (!bdcList || !bdcList.length) {
+      bdcTbody.innerHTML = `<tr><td colspan="3" class="text-muted small">No BDC payables in this period.</td></tr>`;
+      return;
+    }
+    bdcList.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="small">${r.bdc_name || ''}</td>
+        <td class="text-end small">${int0(r.count)}</td>
+        <td class="text-end small">GHS ${money2(r.total_amount)}</td>
+      `;
+      bdcTbody.appendChild(tr);
+    });
+  }
+
+  // Render OMC table
+  function renderOMC(omcList) {
+    if (!omcTbody) return;
+    omcTbody.innerHTML = '';
+    if (!omcList || !omcList.length) {
+      omcTbody.innerHTML = `<tr><td colspan="3" class="text-muted small">No OMC returns in this period.</td></tr>`;
+      return;
+    }
+    omcList.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="small">${r.omc_name || ''}</td>
+        <td class="text-end small">${int0(r.count)}</td>
+        <td class="text-end small">GHS ${money2(r.total_amount)}</td>
+      `;
+      omcTbody.appendChild(tr);
+    });
+  }
+
+  // Render payments table
+  function renderPayments(payments) {
+    if (!paymentsTbody) return;
+    paymentsTbody.innerHTML = '';
+    if (!payments || !payments.length) {
+      paymentsTbody.innerHTML = `<tr><td colspan="6" class="text-muted small">No payments in this period.</td></tr>`;
+      if (paymentsCountBadge) paymentsCountBadge.textContent = '0 payments in period';
+      return;
+    }
+    payments.forEach(p => {
+      const status = (p.status || '').toLowerCase();
+      let statusBadge = '<span class="badge bg-warning-subtle text-warning border">Pending</span>';
+      if (status === 'confirmed') {
+        statusBadge = '<span class="badge bg-success-subtle text-success border">Confirmed</span>';
+      } else if (status === 'rejected') {
+        statusBadge = '<span class="badge bg-danger-subtle text-danger border">Rejected</span>';
+      }
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="small">${p.date || ''}</td>
+        <td class="small">${p.type || ''}</td>
+        <td class="text-end small">GHS ${money2(p.amount)}</td>
+        <td class="small">${p.bank_name || ''}</td>
+        <td class="small">${p.account_last4 || ''}</td>
+        <td class="small">${statusBadge}</td>
+      `;
+      paymentsTbody.appendChild(tr);
+    });
+    if (paymentsCountBadge) {
+      paymentsCountBadge.textContent = `${payments.length} payments in period`;
+    }
+  }
+
+  // Initial data from server (JSON-safe for VS Code)
+  const initialChartsData       = JSON.parse('{{ charts_data       | tojson | safe }}' || 'null');
+  const initialSummary          = JSON.parse('{{ summary           | tojson | safe }}' || 'null');
+  const initialCompareSummary   = JSON.parse('{{ compare_summary   | tojson | safe }}' || 'null');
+
+  // Initial render
+  renderCharts(initialChartsData);
+  if (initialSummary) {
+    applySummary(initialSummary);
+    renderCompareCard(initialSummary, initialCompareSummary);
+  }
+  updateGeneratedAt();
+  formatServerMoneyCells();
+
+  // AJAX: fetch data without full reload
+  async function runReportAjax() {
+    if (!filterForm) return;
+    const formData = new FormData(filterForm);
+    const params = new URLSearchParams(formData);
+
+    if (loadingOverlay) loadingOverlay.classList.remove('d-none');
+
+    try {
+      const res = await fetch('/admin/reports/trading/data?' + params.toString(), {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error('Network error');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Bad payload');
+
+      applySummary(data.summary);
+      renderCharts(data.charts_data);
+      renderOrders(data.orders);
+      renderBDC(data.bdc_summary);
+      renderOMC(data.omc_summary);
+      renderPayments(data.payments);
+
+      if (data.compare_enabled && data.compare_summary) {
+        renderCompareCard(data.summary, data.compare_summary);
+      } else {
+        if (compareCardWrapper) compareCardWrapper.innerHTML = '';
+      }
+
+      // update date inputs from payload to keep UI aligned
+      if (startDate && data.start_date) startDate.value = data.start_date;
+      if (endDate && data.end_date)     endDate.value   = data.end_date;
+
+      if (cmpStartDate && data.cmp_start_date) cmpStartDate.value = data.cmp_start_date;
+      if (cmpEndDate && data.cmp_end_date)     cmpEndDate.value   = data.cmp_end_date;
+
+      updateGeneratedAt();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to load report data. Please try again.');
+    } finally {
+      if (loadingOverlay) loadingOverlay.classList.add('d-none');
+    }
+  }
+
+  if (filterForm) {
+    filterForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      runReportAjax();
+    });
+  }
+</script>
+</body>
+</html>

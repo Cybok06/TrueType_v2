@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BDC Accounts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+  <style>
+    body{background:#f6f8fb}
+    .table-responsive{border-radius:14px; background:#fff; box-shadow:0 10px 25px rgba(0,0,0,.06)}
+    th.sortable{cursor:pointer; user-select:none}
+    th.sortable .sort-ind{opacity:.35; margin-left:.25rem}
+    tr.table-row-selectable{cursor:pointer}
+    tr.table-active td{background:#eef5ff !important}
+    .badge-unpaid{background:linear-gradient(135deg,#dc3545,#ff6b6b)}
+    .toolbar-sticky{position:sticky; top:0; z-index:2; background:#f6f8fb; padding-top:.5rem}
+    .results-summary small{color:#6c757d}
+    .btn-ghost{background:#fff; border:1px solid #e9edf5}
+  </style>
+</head>
+<body>
+<div class="container py-4">
+
+  <!-- Header + Search -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3 toolbar-sticky">
+    <div>
+      <h4 class="fw-bold text-primary mb-0">BDC Accounts</h4>
+      <small class="text-muted">Manage Bulk Distributors — search, sort, view & edit.</small>
+    </div>
+    <div class="d-flex align-items-center gap-2 ms-md-auto">
+      <div class="input-group">
+        <input id="bdc-q" type="search" class="form-control" placeholder="Search name, phone, location, rep…" />
+        <button id="bdc-search" class="btn btn-outline-primary">Search</button>
+        <button id="bdc-reset" class="btn btn-outline-secondary">Reset</button>
+      </div>
+      <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addBDCSection">
+        ➕ New BDC
+      </button>
+    </div>
+  </div>
+
+  <!-- Register Form -->
+  <div id="addBDCSection" class="collapse mb-4">
+    <div class="card border-0">
+      <div class="card-body">
+        <h6 class="mb-3 fw-semibold">Register New BDC</h6>
+        <div class="row g-3">
+          <div class="col-md-4"><input type="text" id="bdc-name" class="form-control" placeholder="BDC Name" /></div>
+          <div class="col-md-4"><input type="text" id="bdc-phone" class="form-control" placeholder="Phone Number" /></div>
+          <div class="col-md-4"><input type="text" id="bdc-location" class="form-control" placeholder="Location" /></div>
+          <div class="col-md-6"><input type="text" id="bdc-rep-name" class="form-control" placeholder="Rep Name" /></div>
+          <div class="col-md-6"><input type="text" id="bdc-rep-phone" class="form-control" placeholder="Rep Phone" /></div>
+          <div class="col-12 text-end">
+            <button class="btn btn-primary px-4" id="btn-add-bdc">Create BDC</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results summary -->
+  <div class="d-flex justify-content-between align-items-center results-summary mb-2">
+    <small id="bdc-summary"></small>
+  </div>
+
+  <!-- Advanced Table -->
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" id="bdc-table">
+      <thead class="table-light">
+        <tr>
+          <th style="width:44px;"></th>
+          <th class="sortable" data-key="name">Name <i class="bi bi-arrow-down-up sort-ind"></i></th>
+          <th class="sortable" data-key="phone">Phone <i class="bi bi-arrow-down-up sort-ind"></i></th>
+          <th class="sortable" data-key="location">Location <i class="bi bi-arrow-down-up sort-ind"></i></th>
+          <th class="sortable" data-key="rep_name">Rep <i class="bi bi-arrow-down-up sort-ind"></i></th>
+          <th class="sortable text-end" data-key="pending_amount">Unpaid</th>
+          <th style="width:160px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="bdc-tbody">
+        <!-- rows injected -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination + separate Edit/View buttons -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 mt-3">
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-ghost btn-sm" id="btn-edit-selected" disabled>
+        <i class="bi bi-pencil-square me-1"></i>Edit Selected
+      </button>
+      <a class="btn btn-ghost btn-sm" id="btn-view-selected" target="_self" disabled>
+        <i class="bi bi-box-arrow-up-right me-1"></i>View Selected
+      </a>
+    </div>
+    <nav aria-label="BDC pagination">
+      <ul id="bdc-pager" class="pagination justify-content-center mb-0"></ul>
+    </nav>
+  </div>
+
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="bdcSuccessModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title">✅ BDC Registered</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="mb-2">The BDC has been successfully registered.</p>
+        <button class="btn btn-sm btn-primary mt-2" onclick="location.reload()">OK, Reload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editBDCModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Edit BDC Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-bdc-form" class="row g-3">
+          <input type="hidden" id="edit-bdc-id" />
+          <div class="col-md-6">
+            <label class="form-label">BDC Name</label>
+            <input type="text" id="edit-bdc-name" class="form-control" placeholder="BDC Name" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Location</label>
+            <input type="text" id="edit-bdc-location" class="form-control" placeholder="Location" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input type="text" id="edit-bdc-phone" class="form-control" placeholder="Phone" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Rep Name</label>
+            <input type="text" id="edit-bdc-rep-name" class="form-control" placeholder="Rep Name" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Rep Phone</label>
+            <input type="text" id="edit-bdc-rep-phone" class="form-control" placeholder="Rep Phone" />
+          </div>
+        </form>
+        <div class="d-flex align-items-center gap-2 small mt-2 text-muted">
+          <i class="bi bi-info-circle"></i> You can update one or more fields. Name changes must be unique.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="save-bdc-btn">
+          <span class="spinner-border spinner-border-sm me-2 d-none" id="save-bdc-spinner"></span>
+          Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ Safe JSON seed built from Flask/Jinja: cast ObjectId -> string -->
+<script id="bdc-seed" type="application/json">
+[
+{% for b in bdcs %}
+  {
+    "id": {{ (b._id|string)|tojson }},
+    "name": {{ (b.name or '')|tojson }},
+    "phone": {{ (b.phone or '')|tojson }},
+    "location": {{ (b.location or '')|tojson }},
+    "rep_name": {{ (b.rep_name or '')|tojson }},
+    "rep_phone": {{ (b.rep_phone or '')|tojson }},
+    "pending_amount": {{ ((b.pending_amount or 0)|float)|round(2) }},
+    "pending_count": {{ b.pending_count or 0 }}
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(() => {
+  // ---- Load seed safely from JSON script ----
+  function loadSeed() {
+    try {
+      const el = document.getElementById('bdc-seed');
+      if (el && el.textContent.trim()) return JSON.parse(el.textContent);
+    } catch (e) {
+      console.warn('Seed parse failed', e);
+    }
+    return [];
+  }
+
+  // ---- State ----
+  const PAGE_SIZE = 10;
+  let rows = loadSeed();
+  let filtered = [...rows];
+  let currentPage = 1;
+  let currentSort = { key: 'name', dir: 'asc' };
+  let selectedId = null;
+
+  // ---- Elements ----
+  const $tbody = document.getElementById('bdc-tbody');
+  const $pager = document.getElementById('bdc-pager');
+  const $summary = document.getElementById('bdc-summary');
+  const $q = document.getElementById('bdc-q');
+  const $btnEditSelected = document.getElementById('btn-edit-selected');
+  const $btnViewSelected = document.getElementById('btn-view-selected');
+
+  // ---- Utils ----
+  const fmtMoney = n => Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+  const compare = (a, b) => (a > b) - (a < b);
+  function escapeHtml(s){
+    return String(s ?? '').replace(/[&<>"'`=\/]/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','=':'&#61;','/':'&#47;'
+    }[c]));
+  }
+
+  function applySort(arr) {
+    const {key, dir} = currentSort;
+    const sorted = [...arr].sort((x,y) => {
+      if (key === 'pending_amount') {
+        return (dir==='asc' ? 1 : -1) * ((x[key]||0) - (y[key]||0));
+      }
+      const ax = (x[key] ?? '').toString().toLowerCase();
+      const ay = (y[key] ?? '').toString().toLowerCase();
+      return (dir==='asc' ? 1 : -1) * compare(ax, ay);
+    });
+    return sorted;
+  }
+
+  function applySearch() {
+    const q = ($q.value || '').trim().toLowerCase();
+    if (!q) filtered = [...rows];
+    else {
+      filtered = rows.filter(r =>
+        [r.name, r.phone, r.location, r.rep_name, r.rep_phone]
+          .filter(Boolean)
+          .some(v => v.toString().toLowerCase().includes(q))
+      );
+    }
+    currentPage = 1;
+    render();
+  }
+
+  function renderTable() {
+    const sorted = applySort(filtered);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = sorted.slice(start, start + PAGE_SIZE);
+
+    $tbody.innerHTML = pageItems.map(r => {
+      const unpaid = (r.pending_count || 0) > 0;
+      const isSelected = r.id === selectedId;
+      return `
+        <tr class="table-row-selectable ${isSelected ? 'table-active' : ''}" data-id="${r.id}">
+          <td>
+            <input class="form-check-input row-select" type="radio" name="bdcRow" ${isSelected ? 'checked' : ''} aria-label="Select row">
+          </td>
+          <td class="fw-semibold">${escapeHtml(r.name || '—')}</td>
+          <td>${escapeHtml(r.phone || '—')}</td>
+          <td>${escapeHtml(r.location || '—')}</td>
+          <td>${escapeHtml(r.rep_name || '—')}${r.rep_phone ? ` · <span class="text-muted">${escapeHtml(r.rep_phone)}</span>`:''}</td>
+          <td class="text-end">
+            ${unpaid
+              ? `<span class="badge badge-unpaid text-white">Unpaid • ${fmtMoney(r.pending_amount)}</span>`
+              : `<span class="text-muted">—</span>`}
+          </td>
+          <td>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-secondary" href="/bdc/profile/${r.id}">View</a>
+              <button class="btn btn-sm btn-primary btn-edit" data-id="${r.id}">
+                <i class="bi bi-pencil-square me-1"></i>Edit
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('') || `<tr><td colspan="7" class="text-center text-muted py-5">No BDCs found.</td></tr>`;
+
+    // summary
+    const total = filtered.length, first = total ? start + 1 : 0, last = Math.min(start + PAGE_SIZE, total);
+    const queryTxt = ($q.value||'').trim();
+    $summary.innerHTML = `Showing <strong>${first}</strong>–<strong>${last}</strong> of <strong>${total}</strong>${queryTxt ? ` for "<span class="fw-semibold">${escapeHtml(queryTxt)}</span>"` : ''}.`;
+
+    // enable/disable global buttons
+    const hasSelection = !!selectedId;
+    $btnEditSelected.disabled = !hasSelection;
+    $btnViewSelected.disabled = !hasSelection;
+    $btnViewSelected.href = hasSelection ? `/bdc/profile/${selectedId}` : '#';
+  }
+
+  function renderPager() {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const items = [];
+    const add = (disabled, page, label, active=false) => {
+      items.push(
+        `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}">
+          <button class="page-link" data-page="${page}">${label}</button>
+        </li>`
+      );
+    };
+    add(currentPage===1, 'prev', '«');
+    const windowSize = 5;
+    let s = Math.max(1, currentPage - Math.floor(windowSize/2));
+    let e = Math.min(totalPages, s + windowSize - 1);
+    s = Math.max(1, Math.min(s, e - windowSize + 1));
+    if (s > 1) { add(false, 1, '1'); items.push(`<li class="page-item disabled"><span class="page-link">…</span></li>`); }
+    for (let p=s; p<=e; p++) add(false, String(p), p, p===currentPage);
+    if (e < totalPages) { items.push(`<li class="page-item disabled"><span class="page-link">…</span></li>`); add(false, String(totalPages), totalPages); }
+    add(currentPage===totalPages, 'next', '»');
+    $pager.innerHTML = items.join('');
+  }
+
+  function render() {
+    renderTable();
+    renderPager();
+  }
+
+  function setSelected(id) {
+    selectedId = id;
+    renderTable();
+  }
+
+  // ---- Events ----
+  document.querySelectorAll('#bdc-table thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (currentSort.key === key) currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+      else currentSort = { key, dir: 'asc' };
+      renderTable();
+    });
+  });
+
+  document.getElementById('bdc-pager').addEventListener('click', (e) => {
+    const btn = e.target.closest('button.page-link'); if (!btn) return;
+    const val = btn.getAttribute('data-page');
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (val === 'prev' && currentPage > 1) currentPage--;
+    else if (val === 'next' && currentPage < totalPages) currentPage++;
+    else {
+      const num = parseInt(val,10);
+      if (!isNaN(num)) currentPage = num;
+    }
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  document.getElementById('bdc-tbody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    const id = tr.getAttribute('data-id');
+
+    if (e.target.classList.contains('row-select')) {
+      setSelected(id);
+      return;
+    }
+
+    const btnEdit = e.target.closest('.btn-edit');
+    if (btnEdit) {
+      openEditModal(id);
+      return;
+    }
+
+    if (!e.target.closest('a,button')) setSelected(id);
+  });
+
+  document.getElementById('btn-edit-selected').addEventListener('click', () => {
+    if (selectedId) openEditModal(selectedId);
+  });
+
+  // Search
+  document.getElementById('bdc-search').addEventListener('click', applySearch);
+  document.getElementById('bdc-reset').addEventListener('click', () => { $q.value=''; applySearch(); });
+  $q.addEventListener('keydown', (e) => { if (e.key === 'Enter') applySearch(); });
+
+  // Add BDC -> POST /bdc/add
+  document.getElementById('btn-add-bdc').addEventListener('click', () => {
+    const name = byId('bdc-name'), phone = byId('bdc-phone'), location = byId('bdc-location'),
+          repName = byId('bdc-rep-name'), repPhone = byId('bdc-rep-phone');
+    const payload = {
+      name: name.value.trim(),
+      phone: phone.value.trim(),
+      location: location.value.trim(),
+      rep_name: repName.value.trim(),
+      rep_phone: repPhone.value.trim(),
+    };
+    if (!payload.name || !payload.phone || !payload.location || !payload.rep_name || !payload.rep_phone) {
+      alert('Please fill in all fields including Representative Name and Phone.');
+      return;
+    }
+    fetch('/bdc/add', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+      .then(r=>r.json())
+      .then(data=>{
+        if (data.status==='success') {
+          new bootstrap.Modal(document.getElementById('bdcSuccessModal')).show();
+          [name,phone,location,repName,repPhone].forEach(el=>el.value='');
+        } else alert(data.message||'Failed to add BDC');
+      })
+      .catch(err=>{ console.error(err); alert('❌ Something went wrong.'); });
+  });
+
+  // Edit Modal -> POST /bdc/update/<id>
+  const editModal = new bootstrap.Modal(document.getElementById('editBDCModal'));
+  function openEditModal(id){
+    const r = rows.find(x=>x.id===id);
+    if(!r) return;
+    byId('edit-bdc-id').value = r.id;
+    byId('edit-bdc-name').value = r.name || '';
+    byId('edit-bdc-location').value = r.location || '';
+    byId('edit-bdc-phone').value = r.phone || '';
+    byId('edit-bdc-rep-name').value = r.rep_name || '';
+    byId('edit-bdc-rep-phone').value = r.rep_phone || '';
+    editModal.show();
+  }
+
+  document.getElementById('save-bdc-btn').addEventListener('click', () => {
+    const id = byId('edit-bdc-id').value;
+    const payload = {
+      name: byId('edit-bdc-name').value.trim(),
+      location: byId('edit-bdc-location').value.trim(),
+      phone: byId('edit-bdc-phone').value.trim(),
+      rep_name: byId('edit-bdc-rep-name').value.trim(),
+      rep_phone: byId('edit-bdc-rep-phone').value.trim()
+    };
+    Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
+
+    const spinner = byId('save-bdc-spinner');
+    spinner.classList.remove('d-none');
+
+    fetch(`/bdc/update/${id}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+      .then(r=>r.json())
+      .then(data=>{
+        spinner.classList.add('d-none');
+        if (data.status === 'success') {
+          const idx = rows.findIndex(x=>x.id===id);
+          if (idx>=0) rows[idx] = { ...rows[idx], ...payload };
+          applySearch(); // refresh with current filters
+          editModal.hide();
+        } else alert(data.message || 'Update failed');
+      })
+      .catch(err=>{
+        spinner.classList.add('d-none');
+        console.error(err);
+        alert('❌ Unable to save changes.');
+      });
+  });
+
+  // Helpers
+  function byId(id){ return document.getElementById(id); }
+
+  // Initial render
+  render();
+})();
+</script>
+</body>
+</html>

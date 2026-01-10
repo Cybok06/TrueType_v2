@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Employees </title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap / jQuery / Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <style>
+    :root {
+      --brand: #0d6efd; /* Bootstrap primary (blue) */
+      --brand-50:#e7f1ff; --brand-100:#d0e4ff; --brand-600:#0b5ed7;
+    }
+    .page-title { color: var(--brand-600); }
+    .table-responsive{ max-height: calc(100vh - 260px); }
+    .chip { display:inline-flex; align-items:center; gap:.25rem; padding:.15rem .45rem; border-radius:999px; background:var(--brand-50); color:#0b3c8a; font-size:.75rem; }
+    @media (max-width: 576px){
+      .filters .form-control, .filters .form-select, .filters .btn { width: 100% !important; }
+      .table-responsive{ max-height: calc(100vh - 340px); }
+    }
+  </style>
+</head>
+<body>
+    {% include 'frontdesk_pages/front_desk_sidebar.html' %}
+  <div class="container-fluid py-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <h3 class="m-0 page-title"><i class="bi bi-people-fill me-2"></i>Employees</h3>
+        <span class="badge text-bg-primary">HRIS</span>
+      </div>
+      <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editModal">
+          <i class="bi bi-person-plus"></i> New Employee
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-3 border-primary">
+      <div class="card-body">
+        <div class="row g-2 align-items-end filters">
+          <div class="col-12 col-md-4">
+            <label class="form-label">Search</label>
+            <input id="q" type="search" class="form-control" placeholder="Name, email, phone, staff ID, custom fields..."/>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label">Status</label>
+            <select id="status" class="form-select">
+              <option value="">All</option>
+              <option value="active">Active</option>
+              <option value="probation">On Probation</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="exited">Exited</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label">Group</label>
+            <select id="group" class="form-select">
+              <option value="">All groups</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-2 d-grid">
+            <button id="btnFilter" class="btn btn-outline-primary"><i class="bi bi-funnel"></i> Filter</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Directory Table -->
+    <div class="card shadow-sm">
+      <div class="card-body p-2 p-sm-3">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0" id="tbl">
+            <thead class="table-primary" style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>Name</th>
+                <th>Staff ID</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Probation Ends</th>
+                <th>Groups</th>
+                <th>Docs</th>
+                <th class="text-end"></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Modal -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header border-primary-subtle">
+          <h5 class="modal-title" id="modalTitle">New Employee</h5>
+          <button class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="empForm" class="row g-3">
+            <input type="hidden" id="emp_id" />
+            <div class="col-md-4">
+              <label class="form-label">First Name</label>
+              <input class="form-control" id="first_name" required />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Last Name</label>
+              <input class="form-control" id="last_name" required />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Staff ID</label>
+              <input class="form-control" id="staff_id" />
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" id="email" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Phone</label>
+              <input class="form-control" id="phone" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Employment Type</label>
+              <select class="form-select" id="employment_type">
+                <option value="full_time">Full-time</option>
+                <option value="part_time">Part-time</option>
+                <option value="contract">Contract</option>
+                <option value="intern">Intern</option>
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Role Title</label>
+              <input class="form-control" id="role_title" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Start Date</label>
+              <input type="date" class="form-control" id="start_date" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Probation End</label>
+              <input type="date" class="form-control" id="probation_end" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Confirmation Date</label>
+              <input type="date" class="form-control" id="confirmation_date" />
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label">Location</label>
+              <input class="form-control" id="location" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Status</label>
+              <select class="form-select" id="status_edit">
+                <option value="active" selected>Active</option>
+                <option value="probation">On Probation</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="exited">Exited</option>
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Groups <span class="text-muted">(comma-separated)</span></label>
+              <input class="form-control" id="groups_input" placeholder="e.g., Drivers, Finance, Trainees" />
+            </div>
+
+            <div class="col-12">
+              <div class="d-flex align-items-center justify-content-between">
+                <label class="form-label m-0">Custom Fields</label>
+                <button type="button" id="btnAddField" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-plus-lg"></i> Add Field
+                </button>
+              </div>
+              <div id="customFields" class="row g-2 mt-1"></div>
+              <div class="form-text">Use this for anything else you want to track (e.g., “NHIS No”, “NIA ID”, “Emergency Contact”).</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <textarea class="form-control" id="notes" rows="2"></textarea>
+            </div>
+
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button id="btnSave" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Utilities ----------
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+    const fmt = (s) => s ? new Date(s).toLocaleDateString() : "—";
+    const debounce = (fn, ms=350) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+    async function fetchJSON(url, opts){ const r=await fetch(url, opts); if(!r.ok) throw new Error('Request failed'); return r.json(); }
+
+    // ---------- Populate groups filter ----------
+    async function loadGroupsFilter(){
+      const groups = await fetchJSON('/frontdesk/api/groups');
+      const sel = $('#group');
+      sel.innerHTML = '<option value=\"\">All groups</option>' + groups.map(g=>`<option>${g}</option>`).join('');
+    }
+
+    // ---------- Directory ----------
+    async function loadDirectory(){
+      const q = $('#q').value.trim();
+      const status = $('#status').value;
+      const group = $('#group').value;
+
+      const params = new URLSearchParams();
+      if(q) params.set('q', q);
+      if(status) params.set('status', status);
+      if(group) params.set('group', group);
+
+      const data = await fetchJSON('/frontdesk/api/employees?' + params.toString());
+      const rows = $('#rows');
+
+      rows.innerHTML = data.map(it=>{
+        const full = `${it.first_name||''} ${it.last_name||''}`.trim();
+        const badge = it.status==='active' ? 'success' : (it.status==='probation' ? 'warning' : (it.status==='confirmed'?'primary':'secondary'));
+        const chips = (it.groups||[]).map(g=>`<span class="chip">${g}</span>`).join(' ');
+        return `
+          <tr>
+            <td>
+              <a href="/frontdesk/employees/${it.id}" class="fw-semibold text-decoration-none">${full || '—'}</a>
+              <div class="small text-muted">${it.email||''}</div>
+            </td>
+            <td>${it.staff_id||'—'}</td>
+            <td>${it.role_title||'—'}</td>
+            <td><span class="badge text-bg-${badge}">${(it.status||'').toUpperCase()}</span></td>
+            <td>${fmt(it.probation_end)}</td>
+            <td>${chips || '—'}</td>
+            <td>${it.docs_count||0}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary" data-edit="${it.id}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-sm btn-outline-danger" data-del="${it.id}"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>`;
+      }).join('');
+
+      rows.querySelectorAll('button[data-del]').forEach(btn=>{
+        btn.addEventListener('click', async (e)=>{
+          const id = e.currentTarget.getAttribute('data-del');
+          if(!confirm('Delete this employee?')) return;
+          await fetchJSON('/frontdesk/api/employees/'+id, {method:'DELETE'});
+          loadDirectory();
+        });
+      });
+
+      rows.querySelectorAll('button[data-edit]').forEach(btn=>{
+        btn.addEventListener('click', ()=> openEditModal(btn.getAttribute('data-edit')));
+      });
+    }
+
+    // ---------- Custom fields UI ----------
+    function addCustomFieldRow(name='', value=''){
+      const wrap = $('#customFields');
+      const idx = $$('#customFields .cf-row').length + 1;
+      const row = document.createElement('div');
+      row.className = 'col-12 cf-row';
+      row.innerHTML = `
+        <div class="row g-2 align-items-center">
+          <div class="col-12 col-md-5">
+            <input class="form-control cf-name" placeholder="Name (e.g., NHIS No)" value="${name.replace(/"/g,'&quot;')}">
+          </div>
+          <div class="col-12 col-md-6">
+            <input class="form-control cf-value" placeholder="Value (e.g., 1234567890)" value="${value.replace(/"/g,'&quot;')}">
+          </div>
+          <div class="col-12 col-md-1 text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm btn-remove-cf" title="Remove"><i class="bi bi-x-lg"></i></button>
+          </div>
+        </div>
+      `;
+      wrap.appendChild(row);
+      row.querySelector('.btn-remove-cf').addEventListener('click', ()=> row.remove());
+    }
+
+    // ---------- Edit Modal ----------
+    async function openEditModal(id){
+      const modal = new bootstrap.Modal('#editModal');
+      $('#modalTitle').textContent = 'Edit Employee';
+      const d = await fetchJSON('/frontdesk/api/employees/'+id);
+
+      $('#emp_id').value = d.id;
+      $('#first_name').value = d.first_name||'';
+      $('#last_name').value = d.last_name||'';
+      $('#staff_id').value = d.staff_id||'';
+      $('#email').value = d.email||'';
+      $('#phone').value = d.phone||'';
+      $('#employment_type').value = d.employment_type||'full_time';
+      $('#role_title').value = d.role_title||'';
+      $('#start_date').value = d.start_date ? d.start_date.slice(0,10) : '';
+      $('#probation_end').value = d.probation_end ? d.probation_end.slice(0,10) : '';
+      $('#confirmation_date').value = d.confirmation_date ? d.confirmation_date.slice(0,10) : '';
+      $('#location').value = d.location||'';
+      $('#notes').value = d.notes||'';
+      $('#status_edit').value = d.status||'active';
+      $('#groups_input').value = (d.groups||[]).join(', ');
+
+      // custom fields
+      $('#customFields').innerHTML = '';
+      (d.custom_fields||[]).forEach(cf => addCustomFieldRow(cf.name||'', cf.value||''));
+
+      modal.show();
+    }
+
+    function clearForm(){
+      $('#emp_id').value = '';
+      $('#empForm').reset();
+      $('#customFields').innerHTML = '';
+      $('#modalTitle').textContent = 'New Employee';
+    }
+
+    function collectCustomFields(){
+      return $$('#customFields .cf-row').map(row => {
+        const name = $('.cf-name', row)?.value?.trim() || '';
+        const value = $('.cf-value', row)?.value?.trim() || '';
+        return (name || value) ? {name, value} : null;
+      }).filter(Boolean);
+    }
+
+    async function saveEmployee(){
+      const id = $('#emp_id').value || null;
+      const payload = {
+        first_name: $('#first_name').value.trim(),
+        last_name:  $('#last_name').value.trim(),
+        staff_id:   $('#staff_id').value.trim(),
+        email:      $('#email').value.trim(),
+        phone:      $('#phone').value.trim(),
+        employment_type: $('#employment_type').value,
+        role_title: $('#role_title').value.trim(),
+        start_date: $('#start_date').value || null,
+        probation_end: $('#probation_end').value || null,
+        confirmation_date: $('#confirmation_date').value || null,
+        location:   $('#location').value.trim(),
+        notes:      $('#notes').value.trim(),
+        status:     $('#status_edit').value,
+        groups:     $('#groups_input').value,         // can be comma string; backend normalizes
+        custom_fields: collectCustomFields()
+      };
+
+      if(!payload.first_name || !payload.last_name){
+        alert('First and last name are required');
+        return;
+      }
+
+      if(id){
+        await fetchJSON('/frontdesk/api/employees/'+id, {
+          method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+      }else{
+        await fetchJSON('/frontdesk/api/employees', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+      }
+
+      bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+      clearForm();
+      await loadGroupsFilter();
+      loadDirectory();
+    }
+
+    // ---------- Wire up ----------
+    document.addEventListener('DOMContentLoaded', async ()=>{
+      await loadGroupsFilter();
+      loadDirectory();
+
+      $('#btnFilter').addEventListener('click', loadDirectory);
+      $('#q').addEventListener('input', debounce(loadDirectory, 350));
+      $('#group').addEventListener('change', loadDirectory);
+      $('#status').addEventListener('change', loadDirectory);
+      $('#btnSave').addEventListener('click', saveEmployee);
+      $('#btnAddField').addEventListener('click', ()=> addCustomFieldRow());
+      document.getElementById('editModal').addEventListener('hidden.bs.modal', clearForm);
+    });
+  </script>
+</body>
+</html>

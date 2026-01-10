@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Client Profile</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Favicon and Icons -->
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet" />
+
+  <!-- Bootstrap & DataTables -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet"/>
+  <link href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css" rel="stylesheet"/>
+
+  <style>
+  body { background-color: #f4f6f9; }
+
+.navbar-brand img {
+  height: 40px;
+}
+
+.profile-img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #007bff, #00c9a7);
+  color: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card h5 {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.summary-card .value-box {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.value-box.paid {
+  background-color: #198754;
+  color: #fff;
+}
+
+.value-box.left {
+  background-color: #ffc107;
+  color: #000;
+}
+
+.value-box.debt {
+  background-color: #dc3545;
+  color: #fff;
+}
+
+.badge-status {
+  font-size: 0.85rem;
+  padding: 5px 12px;
+  border-radius: 20px;
+  text-transform: capitalize;
+}
+
+.badge-active { background-color: #28a745; color: #fff; }
+.badge-inactive { background-color: #6c757d; color: #fff; }
+.badge-blocked { background-color: #dc3545; color: #fff; }
+
+.table th, .table td {
+  vertical-align: middle;
+  text-align: center;
+}
+
+.btn-outline-secondary {
+  display: flex;
+  align-items: center;
+}
+
+.btn-outline-secondary i {
+  margin-right: 6px;
+}
+  </style>
+</head>
+<body>
+
+<!-- ✅ Top Navbar with Logo -->
+<nav class="navbar navbar-light bg-white shadow-sm px-4 mb-4">
+  <a class="navbar-brand d-flex align-items-center" href="#">
+    <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="Logo" class="me-2">
+    <span class="fw-bold text-primary">True Type</span>
+  </a>
+</nav>
+
+<div class="container py-4">
+  {% if client %}
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+      <h3 class="fw-bold text-primary"><i class="bi bi-person-badge-fill me-2"></i>Client Profile</h3>
+      <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+    </div>
+
+    {% if latest_approved %}
+    <div class="summary-card">
+      <div class="d-flex justify-content-between flex-wrap">
+        <div>
+          <h5><i class="bi bi-clipboard-check me-1"></i>Latest Approved Order</h5>
+          <p class="mb-1"><i class="bi bi-calendar-check"></i> <strong>Due Date:</strong> {{ latest_approved.due_date.strftime('%Y-%m-%d') if latest_approved.due_date }}</p>
+          <p class="mb-1">
+            <i class="bi bi-cash-coin"></i> <strong>Total Debt:</strong>
+            <span id="total-debt" class="value-box debt" data-val="{{ latest_approved.total_debt or 0 }}">GHS 0.00</span>
+          </p>
+          <p class="mb-1">
+            <i class="bi bi-check-circle text-success"></i> <strong>Amount Paid:</strong>
+            <span id="amount-paid" class="value-box paid" data-val="{{ total_paid or 0 }}">GHS 0.00</span>
+          </p>
+          <p class="mb-0">
+            <i class="bi bi-x-circle text-danger"></i> <strong>Amount Left:</strong>
+            <span id="amount-left" class="value-box left">GHS 0.00</span>
+          </p>
+        </div>
+        <div class="align-self-center">
+          <span class="badge bg-light text-dark">Status: Approved</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card p-4 mb-4">
+      <div class="row align-items-center">
+        <div class="col-md-3 text-center mb-3 mb-md-0">
+          <img src="{{ client.image_url or 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png' }}" alt="Profile Image" class="profile-img">
+        </div>
+        <div class="col-md-9">
+          <h4 class="fw-bold">{{ client.name }}</h4>
+          <div class="row g-2">
+            <div class="col-sm-6"><strong>Client ID:</strong> {{ client.client_id }}</div>
+            <div class="col-sm-6"><strong>Phone:</strong> {{ client.phone }}</div>
+            {% if client.email %}
+              <div class="col-sm-6"><strong>Email:</strong> {{ client.email }}</div>
+            {% endif %}
+            {% if client.location %}
+              <div class="col-sm-6"><strong>Location:</strong> {{ client.location }}</div>
+            {% endif %}
+            <div class="col-sm-6">
+              <strong>Status:</strong>
+              {% set badge_class = 'badge-active' if client.status == 'active' else 'badge-inactive' if client.status == 'inactive' else 'badge-blocked' %}
+              <span class="badge badge-status {{ badge_class }}">{{ client.status }}</span>
+            </div>
+            <div class="col-sm-6">
+              <strong>Registered:</strong> {{ client.date_registered.strftime('%Y-%m-%d %H:%M') if client.date_registered }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <h5 class="mb-3"><i class="bi bi-clock-history me-1"></i>Order History</h5>
+      {% if orders %}
+      <div class="table-responsive">
+        <table id="ordersTable" class="table table-striped table-bordered nowrap w-100">
+          <thead class="table-dark">
+            <tr>
+              <th>Date</th>
+              <th>Product</th>
+              <th>Vehicle No.</th>
+              <th>Qty</th>
+              <th>Region</th>
+              <th>Depot</th>
+              <th>BDC</th>
+              <th>OMC</th>
+              <th>P-BDC-OMC</th>
+              <th>S-BDC-OMC</th>
+              <th>Margins</th>
+              <th>Returns</th>
+              <th>Tax</th>
+              <th>Total Debt</th>
+              <th>Paid</th>
+              <th>Left</th>
+              <th>Due Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for order in orders %}
+            <tr>
+              <td>{{ order.date.strftime('%Y-%m-%d') if order.date }}</td>
+              <td>{{ order.product or '-' }}</td>
+              <td>{{ order.vehicle_number or '-' }}</td>
+              <td class="amt">{{ order.quantity or 0 }}</td>
+              <td>{{ order.region or '-' }}</td>
+              <td>{{ order.depot or '-' }}</td>
+              <td>{{ order.bdc_name or '-' }}</td>
+              <td>{{ order.omc or '-' }}</td>
+              <td class="amt">{{ order.p_bdc_omc or 0 }}</td>
+              <td class="amt">{{ order.s_bdc_omc or 0 }}</td>
+              <td class="amt">{{ order.margin or 0 }}</td>
+              <td class="amt">{{ order.returns or 0 }}</td>
+              <td class="amt">{{ order.tax or 0 }}</td>
+              <td class="amt">{{ order.total_debt or 0 }}</td>
+              <td class="amt">{{ order.amount_paid or 0 }}</td>
+              <td class="amt">{{ (order.total_debt or 0) - (order.amount_paid or 0) }}</td>
+              <td>{{ order.due_date.strftime('%Y-%m-%d') if order.due_date }}</td>
+              <td><span class="badge bg-info text-dark">{{ order.status|capitalize }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-muted">No orders found for this client.</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="alert alert-danger">Client not found.</div>
+  {% endif %}
+</div>
+
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
+<script>
+  $(document).ready(function () {
+    $('#ordersTable').DataTable({
+      dom: 'Bfrtip',
+      buttons: ['excelHtml5', 'pdfHtml5', 'print'],
+      pageLength: 10,
+      responsive: true
+    });
+  });
+
+  // ✅ Format amounts with thousand separator
+  document.addEventListener("DOMContentLoaded", function () {
+    function formatMoney(val) {
+      return Number(val || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    // Format summary section
+    const debtEl = document.getElementById("total-debt");
+    const paidEl = document.getElementById("amount-paid");
+    const leftEl = document.getElementById("amount-left");
+
+    if (debtEl && paidEl && leftEl) {
+      const debt = parseFloat(debtEl.getAttribute("data-val")) || 0;
+      const paid = parseFloat(paidEl.getAttribute("data-val")) || 0;
+      const left = debt - paid;
+
+      debtEl.textContent = `GHS ${formatMoney(debt)}`;
+      paidEl.textContent = `GHS ${formatMoney(paid)}`;
+      leftEl.textContent = `GHS ${formatMoney(left)}`;
+    }
+
+    // Format all table cells with class .amt
+    document.querySelectorAll("td.amt").forEach(td => {
+      const val = parseFloat(td.textContent) || 0;
+      td.textContent = formatMoney(val);
+    });
+  });
+</script>
+
+</body>
+</html>

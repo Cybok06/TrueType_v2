@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Meetings</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+
+  <!-- FullCalendar (v6) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
+
+  <!-- Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    .card{border-radius:1rem;box-shadow:0 20px 40px rgba(0,0,0,.08)}
+    dialog::backdrop{background:rgba(0,0,0,.45)}
+    .badge{display:inline-flex;align-items:center;gap:.375rem;padding:.125rem .5rem;border-radius:9999px;font-size:.75rem;font-weight:600}
+    .ended{opacity:.85}
+
+    /* Mobile tweaks for FullCalendar toolbar/buttons */
+    @media (max-width: 640px){
+      .fc .fc-toolbar.fc-header-toolbar{
+        gap:.5rem;
+      }
+      .fc .fc-toolbar-title{
+        font-size:1rem;
+      }
+      .fc .fc-button{
+        padding:.25rem .5rem;
+        font-size:.75rem;
+      }
+    }
+  </style>
+</head>
+<body class="h-full min-h-screen bg-slate-50 text-slate-800">
+  {% include 'frontdesk_pages/front_desk_sidebar.html' %}
+  <!-- Topbar -->
+  <header class="bg-white/90 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between">
+      <h1 class="text-base sm:text-lg md:text-xl font-semibold">Meetings</h1>
+      <div class="flex items-center gap-2">
+        <button id="btnNew" class="px-3 sm:px-4 py-2 rounded-lg bg-black text-white hover:opacity-90 flex items-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i><span class="hidden xs:inline">New</span>
+        </button>
+        <button id="btnToday" class="px-3 py-2 rounded-lg border border-slate-300">Today</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 grid gap-4 sm:gap-6 lg:grid-cols-3">
+    <!-- Calendar -->
+    <section class="lg:col-span-2 bg-white card p-3 sm:p-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="text-sm text-slate-500">Calendar</div>
+        <!-- Legend (scrollable on mobile) -->
+        <div id="legend" class="flex items-center gap-2 text-xs overflow-auto whitespace-nowrap w-full sm:w-auto">
+          <span class="badge" style="background:#e2e8f0;color:#0f172a">No category</span>
+          <span class="badge" style="background:#dbeafe;color:#1e40af">Client</span>
+          <span class="badge" style="background:#dcfce7;color:#166534">Internal</span>
+          <span class="badge" style="background:#fee2e2;color:#991b1b">Interview</span>
+          <span class="badge" style="background:#f5f3ff;color:#4c1d95">Training</span>
+          <span class="badge" style="background:#fff7ed;color:#9a3412">Project</span>
+        </div>
+      </div>
+      <div id="calendar"></div>
+    </section>
+
+    <!-- Side panel -->
+    <aside class="bg-white card p-3 sm:p-4">
+      <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <h2 class="font-semibold text-base sm:text-lg">All meetings</h2>
+        <input id="search" type="search" placeholder="Search title, location, attendee…"
+               class="w-full sm:w-64 ml-auto rounded-lg border-slate-300">
+      </div>
+      <ul id="list" class="divide-y divide-slate-200 max-h-[72vh] overflow-auto"></ul>
+    </aside>
+  </main>
+
+  <!-- Create/Edit Modal -->
+  <dialog id="dlg" class="rounded-2xl w-[96%] sm:w-[95%] max-w-xl p-0">
+    <form id="form" method="dialog" class="bg-white rounded-2xl">
+      <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
+        <h3 id="dlgTitle" class="text-base sm:text-lg font-semibold">New meeting</h3>
+        <button type="button" id="btnClose" class="text-slate-500 hover:text-slate-800 text-2xl leading-none">&times;</button>
+      </div>
+
+      <div class="p-4 sm:p-5 grid gap-4">
+        <input type="hidden" id="id">
+        <div>
+          <label class="block text-sm font-medium">Title</label>
+          <input id="title" class="mt-1 w-full rounded-lg border-slate-300" required>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium">Start</label>
+            <input id="start" type="datetime-local" class="mt-1 w-full rounded-lg border-slate-300" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium">End</label>
+            <input id="end" type="datetime-local" class="mt-1 w-full rounded-lg border-slate-300" required>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium">Location</label>
+            <input id="location" class="mt-1 w-full rounded-lg border-slate-300" placeholder="Boardroom, Zoom, etc.">
+          </div>
+          <div>
+            <label class="block text-sm font-medium">Category</label>
+            <select id="category" class="mt-1 w-full rounded-lg border-slate-300">
+              <option value="">Select category</option>
+              <option>Client</option>
+              <option>Internal</option>
+              <option>Interview</option>
+              <option>Training</option>
+              <option>Project</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Attendees (comma-separated)</label>
+          <input id="attendees" placeholder="e.g., Rebecca, David, Nelson" class="mt-1 w-full rounded-lg border-slate-300">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Description</label>
+          <textarea id="description" rows="3" class="mt-1 w-full rounded-lg border-slate-300"></textarea>
+        </div>
+
+        <div class="grid grid-cols-[auto_1fr] items-center gap-3">
+          <label class="block text-sm font-medium">Color (optional)</label>
+          <input id="color" type="color" class="w-16 h-10 rounded-lg border-slate-300" value="#0ea5e9">
+        </div>
+      </div>
+
+      <div class="p-4 sm:p-5 border-t border-slate-200 flex items-center justify-between">
+        <button type="submit" class="px-4 py-2 rounded-lg bg-black text-white">Save</button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btnDelete" class="px-3 py-2 rounded-lg border border-red-300 text-red-600 hidden">Delete</button>
+          <button type="button" id="btnCancel" class="px-3 py-2 rounded-lg border border-slate-300">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // Helpers
+    const $ = (s)=>document.querySelector(s);
+    (function(){ try { lucide.createIcons(); } catch(e){} })();
+
+    // DOM refs
+    const listEl = $("#list");
+    const searchEl = $("#search");
+    const dlg = $("#dlg");
+    const form = $("#form");
+    const btnNew = $("#btnNew");
+    const btnClose = $("#btnClose");
+    const btnCancel = $("#btnCancel");
+    const btnDelete = $("#btnDelete");
+    const btnToday = $("#btnToday");
+    const dlgTitle = $("#dlgTitle");
+
+    const fields = {
+      id: $("#id"),
+      title: $("#title"),
+      start: $("#start"),
+      end: $("#end"),
+      location: $("#location"),
+      description: $("#description"),
+      color: $("#color"),
+      category: $("#category"),
+      attendees: $("#attendees"),
+    };
+
+    let calendar;
+    let ALL_ITEMS = [];  // cache for list + countdowns
+    let countdownTimer = null;
+
+    const CATEGORY_COLORS = {
+      "": {bg:"#e2e8f0", fg:"#0f172a"},
+      "Client": {bg:"#dbeafe", fg:"#1e40af"},
+      "Internal": {bg:"#dcfce7", fg:"#166534"},
+      "Interview": {bg:"#fee2e2", fg:"#991b1b"},
+      "Training": {bg:"#f5f3ff", fg:"#4c1d95"},
+      "Project": {bg:"#fff7ed", fg:"#9a3412"}
+    };
+
+    function toLocalInput(dtStr){
+      if(!dtStr) return "";
+      const dt = new Date(dtStr);
+      const pad = (n)=>String(n).padStart(2,"0");
+      return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    }
+
+    function chips(arr){
+      if(!arr || !arr.length) return "";
+      return `<div class="mt-1 flex flex-wrap gap-1">
+        ${arr.map(a=>`<span class="px-2 py-0.5 rounded-full text-xs bg-slate-100">${a}</span>`).join("")}
+      </div>`;
+    }
+
+    function catBadge(cat){
+      const c = CATEGORY_COLORS[cat || ""];
+      return `<span class="badge" style="background:${c.bg};color:${c.fg}">${cat || "No category"}</span>`;
+    }
+
+    function fmtDuration(ms){
+      const s = Math.max(0, Math.floor(ms/1000));
+      const hh = String(Math.floor(s/3600)).padStart(2,'0');
+      const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+      const ss = String(s%60).padStart(2,'0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function statusAndCountdown(item){
+      const now = Date.now();
+      const start = new Date(item.start).getTime();
+      const end = new Date(item.end).getTime();
+
+      if (now < start) {
+        return { label: `Starts in ${fmtDuration(start - now)}`, state: 'upcoming', badge: null };
+      } else if (now >= start && now <= end) {
+        return { label: `Ongoing · ends in ${fmtDuration(end - now)}`, state: 'ongoing', badge: `<span class="badge" style="background:#e0f2fe;color:#075985">Ongoing</span>` };
+      } else {
+        return { label: `Ended ${fmtDuration(now - end)} ago`, state: 'ended', badge: `<span class="badge" style="background:#fee2e2;color:#991b1b">Ended</span>` };
+      }
+    }
+
+    function renderList(items){
+      const q = (searchEl.value||"").toLowerCase();
+      const filtered = items.filter(i =>
+        (i.title||"").toLowerCase().includes(q) ||
+        (i.location||"").toLowerCase().includes(q) ||
+        (i.description||"").toLowerCase().includes(q) ||
+        (i.attendees||[]).join(" ").toLowerCase().includes(q) ||
+        (i.category||"").toLowerCase().includes(q)
+      );
+
+      listEl.innerHTML = filtered.map(i => {
+        const when = `${new Date(i.start).toLocaleString()} — ${new Date(i.end).toLocaleString()}`;
+        const st = statusAndCountdown(i);
+        const color = (i.color||'') || CATEGORY_COLORS[i.category||""]?.bg;
+        const endedClass = st.state === 'ended' ? 'ended' : '';
+        return `
+        <li class="py-3 flex items-start gap-3 ${endedClass}" data-id="${i.id}">
+          <div class="w-2 h-2 mt-2 rounded-full" style="background:${color}"></div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium flex items-center gap-2">
+                <span>${i.title||'(untitled)'}</span> ${catBadge(i.category)} ${st.badge||''}
+              </div>
+              <div class="text-xs text-slate-500">${when}</div>
+            </div>
+            ${i.location ? `<div class="text-sm text-slate-600">${i.location}</div>`:''}
+            ${i.description ? `<div class="text-sm text-slate-500 line-clamp-2">${i.description}</div>`:''}
+            ${chips(i.attendees)}
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <div class="text-xs font-medium countdown text-slate-700"
+                   data-start="${i.start}" data-end="${i.end}">
+                   ${st.label}
+              </div>
+              <div class="shrink-0">
+                <button data-id="${i.id}" class="btn-edit px-2 py-1 text-sm rounded-lg border border-slate-300">Edit</button>
+                <button data-id="${i.id}" class="btn-del px-2 py-1 text-sm rounded-lg border border-red-300 text-red-600">Delete</button>
+              </div>
+            </div>
+          </div>
+        </li>`;
+      }).join("");
+
+      // Wire buttons
+      listEl.querySelectorAll(".btn-edit").forEach(b=>b.addEventListener("click", onEditFromList));
+      listEl.querySelectorAll(".btn-del").forEach(b=>b.addEventListener("click", onDeleteFromList));
+    }
+
+    function startCountdownTicker(){
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        document.querySelectorAll('.countdown').forEach(el=>{
+          const start = new Date(el.dataset.start).getTime();
+          const end = new Date(el.dataset.end).getTime();
+          const now = Date.now();
+          let txt = '';
+          if (now < start) txt = `Starts in ${fmtDuration(start - now)}`;
+          else if (now >= start && now <= end) txt = `Ongoing · ends in ${fmtDuration(end - now)}`;
+          else txt = `Ended ${fmtDuration(now - end)} ago`;
+          el.textContent = txt;
+
+          // also toggle ended class on parent <li>
+          const li = el.closest('li');
+          if (li){
+            if (now > end) li.classList.add('ended');
+            else li.classList.remove('ended');
+          }
+        });
+      }, 1000);
+    }
+
+    async function fetchAll(){
+      const res = await fetch("/frontdesk/api/meetings");
+      return await res.json();
+    }
+
+    function openModal(mode, data=null){
+      dlgTitle.textContent = mode === "new" ? "New meeting" : "Edit meeting";
+      btnDelete.classList.toggle("hidden", mode === "new");
+      if(mode === "new"){
+        fields.id.value = "";
+        fields.title.value = "";
+        fields.start.value = "";
+        fields.end.value = "";
+        fields.location.value = "";
+        fields.description.value = "";
+        fields.color.value = "#0ea5e9";
+        fields.category.value = "";
+        fields.attendees.value = "";
+      } else {
+        fields.id.value = data.id;
+        fields.title.value = data.title || "";
+        fields.start.value = toLocalInput(data.start);
+        fields.end.value = toLocalInput(data.end);
+        fields.location.value = data.location || "";
+        fields.description.value = data.description || "";
+        fields.category.value = data.category || "";
+        fields.attendees.value = (data.attendees||[]).join(", ");
+        fields.color.value = data.color || "";
+      }
+      dlg.showModal();
+    }
+
+    async function refreshUI(){
+      ALL_ITEMS = await fetchAll();
+      renderList(ALL_ITEMS);
+      startCountdownTicker();
+      calendar?.refetchEvents();
+    }
+
+    // Event handlers
+    btnNew.addEventListener("click", ()=>openModal("new"));
+    btnClose.addEventListener("click", ()=>dlg.close());
+    btnCancel.addEventListener("click", ()=>dlg.close());
+    btnToday.addEventListener("click", ()=>calendar?.today());
+    searchEl.addEventListener("input", ()=>renderList(ALL_ITEMS));
+
+    btnDelete.addEventListener("click", async ()=>{
+      const id = fields.id.value;
+      if(!id) return;
+      if(!confirm("Delete this meeting?")) return;
+      const res = await fetch(`/frontdesk/api/meetings/${id}`, { method: "DELETE" });
+      if(res.ok){
+        dlg.close();
+        await refreshUI();
+      } else {
+        alert("Failed to delete.");
+      }
+    });
+
+    async function onEditFromList(e){
+      const id = e.currentTarget.dataset.id;
+      const res = await fetch(`/frontdesk/api/meetings/${id}`);
+      const item = await res.json();
+      openModal("edit", item);
+    }
+
+    async function onDeleteFromList(e){
+      const id = e.currentTarget.dataset.id;
+      if(!confirm("Delete this meeting?")) return;
+      const res = await fetch(`/frontdesk/api/meetings/${id}`, { method: "DELETE" });
+      if(res.ok){
+        await refreshUI();
+      }
+    }
+
+    form.addEventListener("submit", async (ev)=>{
+      ev.preventDefault();
+      const payload = {
+        title: fields.title.value.trim(),
+        start: fields.start.value,
+        end: fields.end.value,
+        location: fields.location.value.trim(),
+        description: fields.description.value.trim(),
+        color: fields.color.value || null,
+        category: fields.category.value,
+        attendees: fields.attendees.value
+      };
+      const id = fields.id.value;
+      let res;
+      if(id){
+        res = await fetch(`/frontdesk/api/meetings/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(`/frontdesk/api/meetings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+      if(res.ok){
+        dlg.close();
+        await refreshUI();
+      } else {
+        const err = await res.json().catch(()=>({error:"Failed"}));
+        alert(err.error || "Failed to save.");
+      }
+    });
+
+    // Responsive calendar toolbar + options
+    function applyCalendarResponsiveOptions(){
+      const isMobile = window.matchMedia('(max-width: 640px)').matches;
+      const toolbarMobile = { left: "prev,next today", center: "title", right: "listWeek,dayGridMonth" };
+      const toolbarDesktop = { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek" };
+      calendar.setOption('headerToolbar', isMobile ? toolbarMobile : toolbarDesktop);
+      calendar.setOption('dayMaxEvents', true);
+      calendar.setOption('expandRows', true);
+      calendar.setOption('contentHeight', 'auto');
+      calendar.setOption('aspectRatio', isMobile ? 0.9 : 1.35);
+    }
+
+    document.addEventListener("DOMContentLoaded", async ()=>{
+      // Calendar
+      const calEl = document.getElementById("calendar");
+      const isMobile = window.matchMedia('(max-width: 640px)').matches;
+
+      calendar = new FullCalendar.Calendar(calEl, {
+        initialView: isMobile ? "listWeek" : "dayGridMonth",
+        height: "auto",
+        headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridDay,listWeek" },
+        nowIndicator: true,
+        navLinks: true,
+        selectable: true,
+        editable: true,
+        eventDurationEditable: true,
+        dayMaxEvents: true,
+        expandRows: true,
+        select: (selInfo)=>{
+          openModal("new");
+          fields.start.value = selInfo.startStr.slice(0,16);
+          fields.end.value = (selInfo.endStr || selInfo.startStr).slice(0,16);
+        },
+        eventClick: async (info)=>{
+          const id = info.event.extendedProps.id || info.event.id;
+          const res = await fetch(`/frontdesk/api/meetings/${id}`);
+          const item = await res.json();
+          openModal("edit", item);
+        },
+        eventDrop: async (info)=>{
+          await fetch(`/frontdesk/api/meetings/${info.event.id}`, {
+            method: "PUT",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+              start: info.event.start.toISOString().slice(0,16),
+              end: info.event.end?.toISOString().slice(0,16) || info.event.start.toISOString().slice(0,16)
+            })
+          });
+          await refreshUI();
+        },
+        eventResize: async (info)=>{
+          await fetch(`/frontdesk/api/meetings/${info.event.id}`, {
+            method: "PUT",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+              start: info.event.start.toISOString().slice(0,16),
+              end: info.event.end?.toISOString().slice(0,16)
+            })
+          });
+          await refreshUI();
+        },
+        events: {
+          url: "/frontdesk/api/meetings",
+          failure: ()=>alert("Failed to load meetings.")
+        },
+        eventDataTransform: (e)=>{
+          const color = e.color || (CATEGORY_COLORS[e.category||""]?.bg);
+          return {
+            id: e.id,
+            title: e.title,
+            start: e.start,
+            end: e.end,
+            backgroundColor: color || undefined,
+            borderColor: color || undefined,
+            extendedProps: { id: e.id, location: e.location, category: e.category, attendees: e.attendees }
+          };
+        },
+        windowResize: () => applyCalendarResponsiveOptions()
+      });
+
+      calendar.render();
+      applyCalendarResponsiveOptions();
+
+      // Initial load
+      await refreshUI();
+    });
+  </script>
+</body>
+</html>

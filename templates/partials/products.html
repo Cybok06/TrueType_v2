@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Manage Products</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap & jQuery -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{ --brand-wa:#25D366; --brand-fb:#1877F2; --brand-tg:#229ED9; --brand-sms:#6c757d; --brand-mail:#ea4335; }
+    body { background:#f6f8fb; }
+    .card h5 { word-break: break-word; }
+    .price { font-variant-numeric: tabular-nums; }
+    .btn-icon { display:inline-flex; align-items:center; gap:.5rem; }
+    .chip { background:#eef2ff; color:#3730a3; border-radius:999px; padding:2px 10px; font-size:.8rem; }
+    .share-channel { border:1px solid #e9ecef; background:#fff; border-radius:10px; padding:.6rem .8rem; display:flex; align-items:center; gap:.5rem; cursor:pointer; }
+    .share-channel svg { width:20px; height:20px; }
+    .share-channel.active { outline:2px solid #0d6efd; background:#f8fbff; }
+    .client-list { max-height: 50vh; overflow:auto; border:1px solid #e9ecef; border-radius:.5rem; background:#fff; }
+    .client-item { display:flex; align-items:center; gap:.5rem; padding:.5rem .75rem; }
+    .client-item:hover { background:#f8f9fa; }
+    .client-list-header { position:sticky; top:0; background:#f8f9fa; border-bottom:1px solid #e9ecef; padding:.5rem .75rem; z-index:1; }
+    .form-hint { font-size:.86rem; color:#6c757d; }
+    .wa svg path { fill: var(--brand-wa); } .fb svg path { fill: var(--brand-fb); } .tg svg path { fill: var(--brand-tg); }
+    .sms svg path { fill: var(--brand-sms); } .mail svg path { fill: var(--brand-mail); }
+    .card .btn { white-space: nowrap; }
+  </style>
+</head>
+<body class="bg-light">
+<div class="container py-5">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <h3 class="mb-0">🛢️ Manage Products</h3>
+    <span class="text-muted small">Share prices to clients via WhatsApp</span>
+  </div>
+
+  <!-- Add Product Form -->
+  <form id="addProductForm" class="card shadow-sm p-4 mb-4 bg-white rounded">
+    <h5 class="mb-3">Add New Product</h5>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <input type="text" name="name" class="form-control" placeholder="Product Name" required>
+      </div>
+      <div class="col-md-3">
+        <input type="number" name="s_price" class="form-control" placeholder="S-Price" required step="0.01">
+      </div>
+      <div class="col-md-3">
+        <input type="number" name="p_price" class="form-control" placeholder="P-Price" required step="0.01">
+      </div>
+      <!-- Taxes -->
+      <div class="col-md-3">
+        <input type="number" name="s_tax" class="form-control" placeholder="S-Tax" step="0.01">
+      </div>
+      <div class="col-md-3">
+        <input type="number" name="p_tax" class="form-control" placeholder="P-Tax" step="0.01">
+      </div>
+      <div class="col-12">
+        <textarea name="description" class="form-control" placeholder="Description (optional)" rows="2"></textarea>
+      </div>
+      <div class="col-12 text-end">
+        <button type="submit" class="btn btn-primary mt-2">Add Product</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- Product List -->
+  <div class="row" id="productList"></div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="editProductForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="product_id">
+        <div class="mb-3"><input type="text" name="name" class="form-control" placeholder="Product Name" required></div>
+        <div class="mb-3"><input type="number" name="s_price" class="form-control" placeholder="S-Price" required step="0.01"></div>
+        <div class="mb-3"><input type="number" name="p_price" class="form-control" placeholder="P-Price" required step="0.01"></div>
+        <div class="mb-3"><input type="number" name="s_tax" class="form-control" placeholder="S-Tax (per L)" step="0.01"></div>
+        <div class="mb-3"><input type="number" name="p_tax" class="form-control" placeholder="P-Tax (per L)" step="0.01"></div>
+        <div class="mb-3"><textarea name="description" class="form-control" placeholder="Description (optional)" rows="2"></textarea></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" type="submit">Save Changes</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Price Trend Modal -->
+<div class="modal fade" id="priceTrendModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">📈 Price, Tax & Combo Trend</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body"><canvas id="priceTrendChart" height="200"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal fade" id="shareModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
+    <form id="shareForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2">
+          <span>Share Price</span>
+          <span class="badge text-bg-light" id="shareProductNameBadge" hidden></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="shareProductId" name="product_id">
+        <input type="hidden" id="shareUrl" value="">
+        <div class="form-hint mt-2" id="channelHint">WhatsApp opens one chat per selected client. You’ll tap <b>Send</b> in each chat.</div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Message</label>
+          <textarea id="shareMessage" class="form-control" rows="4" required></textarea>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnCopyMessage" type="button">Copy message</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="btnCopyLinks" type="button">Copy all WhatsApp links</button>
+          </div>
+        </div>
+
+        <div class="mb-2 d-flex align-items-center justify-content-between">
+          <label class="form-label fw-semibold mb-0">Select Clients</label>
+          <div class="d-flex align-items-center gap-2">
+            <input type="text" id="clientSearch" class="form-control form-control-sm" placeholder="Search clients..." style="max-width:220px;">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAll" type="button">Select All</button>
+            <span class="chip" id="selectedCount">0 selected</span>
+          </div>
+        </div>
+        <div class="client-list" id="clientList" aria-live="polite">
+          <div class="client-list-header d-flex align-items-center justify-content-between">
+            <span class="text-muted small">Only clients with WhatsApp numbers are shown</span>
+            <span class="text-muted small" id="clientTotal"></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer flex-wrap gap-2">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-primary" type="submit" id="btnShareNow"><span id="btnShareLabel">Share via WhatsApp</span></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let productsById = new Map();
+let priceChart;
+let lastBuiltLinks = [];
+
+// ----- Helpers -----
+function n(v){ const x = Number(v); return Number.isFinite(x) ? x : 0; }
+function money(v){ return n(v).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+function combo(product){ return n(product.s_price) + n(product.s_tax); }
+function toast(msg, type='info'){
+  const el = document.createElement('div');
+  el.className = `alert alert-${type} position-fixed top-0 end-0 m-3 shadow`;
+  el.style.zIndex = 1080; el.textContent = msg; document.body.appendChild(el);
+  setTimeout(()=> el.remove(), 3200);
+}
+
+// ---------- Load & Render Products ----------
+function loadProducts() {
+  $.ajax({ url: '/products/load', method: 'GET', cache: false })
+  .done(function(data) {
+    productsById.clear();
+    const list = $('#productList').empty();
+
+    if (!Array.isArray(data) || !data.length){
+      list.append('<div class="col-12"><div class="alert alert-light border">No products yet.</div></div>');
+      return;
+    }
+
+    data.forEach(product => {
+      productsById.set(String(product._id), product);
+      const comboValue = combo(product);
+      list.append(`
+        <div class="col-md-4">
+          <div class="card shadow-sm mb-4 h-100">
+            <div class="card-body d-flex flex-column">
+              <h5 class="mb-2">${product.name || ''}</h5>
+              <p class="mb-1 price"><strong>S-Price:</strong> GHS ${money(product.s_price)}</p>
+              <p class="mb-1 price"><strong>P-Price:</strong> GHS ${money(product.p_price)}</p>
+              <p class="mb-1"><strong>S-Tax:</strong> GHS ${money(product.s_tax)}</p>
+              <p class="mb-1"><strong>P-Tax:</strong> GHS ${money(product.p_tax)}</p>
+              <p class="mb-1 price"><strong>Combo (S-Price + S-Tax):</strong> <span class="badge text-bg-primary">GHS ${money(comboValue)}</span></p>
+              <p class="text-muted flex-grow-1">${product.description || 'No description'}</p>
+              <div class="d-flex justify-content-between mt-3 gap-2 flex-wrap">
+                <button class="btn btn-sm btn-warning btn-edit" data-id="${product._id}">Edit</button>
+                <button class="btn btn-sm btn-info btn-trend" data-id="${product._id}">📈 Trend</button>
+                <button class="btn btn-sm btn-success btn-share" data-id="${product._id}">Share</button>
+                <button class="btn btn-sm btn-danger btn-delete" data-id="${product._id}">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `);
+    });
+  })
+  .fail(function(xhr){
+    console.error('Failed to load products', xhr?.responseText || xhr?.statusText);
+    $('#productList').html('<div class="col-12"><div class="alert alert-danger">Failed to load products.</div></div>');
+    toast('Failed to load products','danger');
+  });
+}
+
+// ---------- Edit ----------
+$(document).on('click', '.btn-edit', function(){
+  const id = $(this).data('id');
+  const product = productsById.get(String(id));
+  if(!product) return;
+  const form = $('#editProductForm');
+  form.find('[name="product_id"]').val(product._id);
+  form.find('[name="name"]').val(product.name || '');
+  form.find('[name="s_price"]').val(product.s_price ?? '');
+  form.find('[name="p_price"]').val(product.p_price ?? '');
+  form.find('[name="s_tax"]').val(product.s_tax ?? '');
+  form.find('[name="p_tax"]').val(product.p_tax ?? '');
+  form.find('[name="description"]').val(product.description || '');
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+});
+
+$('#editProductForm').on('submit', function(e){
+  e.preventDefault();
+  const id = $(this).find('[name="product_id"]').val();
+  const formData = {
+    name: $(this).find('[name="name"]').val(),
+    s_price: $(this).find('[name="s_price"]').val(),
+    p_price: $(this).find('[name="p_price"]').val(),
+    s_tax: $(this).find('[name="s_tax"]').val(),
+    p_tax: $(this).find('[name="p_tax"]').val(),
+    description: $(this).find('[name="description"]').val()
+  };
+  $.ajax({ url: `/products/update/${id}`, method: 'POST', contentType: 'application/json', data: JSON.stringify(formData) })
+  .done(() => { $('#editModal').modal('hide'); toast('Product updated','success'); loadProducts(); })
+  .fail(() => toast('Update failed','danger'));
+});
+
+// ---------- Delete ----------
+$(document).on('click', '.btn-delete', function(){
+  const id = $(this).data('id');
+  if (!confirm('Delete this product?')) return;
+  $.ajax({ url: `/products/delete/${id}`, method: 'DELETE' })
+  .done((res) => { if(res && res.success){ toast('Deleted','success'); loadProducts(); } else toast('Delete failed','danger'); })
+  .fail(() => toast('Delete failed','danger'));
+});
+
+// ---------- Trend ----------
+function renderTrend(product){
+  const ctx = document.getElementById('priceTrendChart').getContext('2d');
+  const hist = Array.isArray(product.price_history) ? product.price_history : [];
+  const labels   = hist.map(p => p.date);
+  const s_prices = hist.map(p => n(p.s_price));
+  const p_prices = hist.map(p => n(p.p_price));
+  const s_taxes  = hist.map(p => (p.s_tax != null ? n(p.s_tax) : null));
+  const p_taxes  = hist.map(p => (p.p_tax != null ? n(p.p_tax) : null));
+  const combos   = hist.map(p => n(p.s_price) + n(p.s_tax));
+
+  if (priceChart) priceChart.destroy();
+
+  const datasets = [
+    { label: 'S-Price', data: s_prices, borderColor: '#0d6efd', fill: false, tension: .3 },
+    { label: 'P-Price', data: p_prices, borderColor: '#198754', fill: false, tension: .3 },
+  ];
+  if (s_taxes.some(v => typeof v === 'number')) datasets.push({ label: 'S-Tax', data: s_taxes, borderColor: '#dc3545', fill: false, tension: .3 });
+  if (p_taxes.some(v => typeof v === 'number')) datasets.push({ label: 'P-Tax', data: p_taxes, borderColor: '#6f42c1', fill: false, tension: .3 });
+  if (combos.some(v => typeof v === 'number' && Number.isFinite(v))) datasets.push({ label: 'Combo (S-Price + S-Tax)', data: combos, borderColor: '#fd7e14', fill: false, tension: .3 });
+
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: `Price, Tax & Combo Trend for ${product.name}` },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: GHS ${money(ctx.parsed.y)}` } }
+      },
+      scales: {
+        y: { ticks: { callback: (v)=> 'GHS ' + money(v) } }
+      }
+    }
+  });
+}
+$(document).on('click', '.btn-trend', function(){
+  const id = $(this).data('id'); const product = productsById.get(String(id)); if (!product) return;
+  renderTrend(product); new bootstrap.Modal(document.getElementById('priceTrendModal')).show();
+});
+
+// ---------- Add ----------
+$('#addProductForm').on('submit', function(e) {
+  e.preventDefault();
+  const $form = $(this);
+  const formData = {
+    name: $form.find('[name="name"]').val(),
+    s_price: $form.find('[name="s_price"]').val(),
+    p_price: $form.find('[name="p_price"]').val(),
+    s_tax: $form.find('[name="s_tax"]').val(),
+    p_tax: $form.find('[name="p_tax"]').val(),
+    description: $form.find('[name="description"]').val()
+  };
+  $.ajax({ url: '/products/add', method: 'POST', contentType: 'application/json', data: JSON.stringify(formData), cache: false })
+  .done(() => { $form[0].reset(); toast('Product added','success'); loadProducts(); })
+  .fail((xhr) => { console.error('Add failed', xhr?.responseText || xhr?.statusText); toast('Add failed','danger'); });
+});
+
+// ---------- Clients loader ----------
+let cachedClients = [];
+async function loadClients(){
+  try{
+    const res = await fetch('/products/clients');
+    const data = await res.json();
+    cachedClients = Array.isArray(data) ? data : [];
+    renderClientList();
+  }catch(e){ toast('Failed to load clients','danger'); }
+}
+function renderClientList(filter=''){
+  const box = document.getElementById('clientList');
+  const totalEl = document.getElementById('clientTotal');
+  box.querySelectorAll('.client-item').forEach(n=>n.remove());
+  const term = filter.trim().toLowerCase();
+  const view = cachedClients.filter(c => !term || (c.name || '').toLowerCase().includes(term));
+  view.forEach(c=>{
+    const label = `${c.name || '—'} — ${c.primary_wa || ''}`;
+    const item = document.createElement('label');
+    item.className = 'client-item';
+    item.innerHTML = `<input type="checkbox" class="form-check-input me-2 client-check" value="${c._id}" data-wa="${c.primary_wa || ''}"><span>${label}</span>`;
+    box.appendChild(item);
+  });
+  totalEl.textContent = `${view.length} shown`;
+  updateSelectedCount();
+}
+function updateSelectedCount(){
+  const nSel = document.querySelectorAll('#clientList .client-check:checked').length;
+  document.getElementById('selectedCount').textContent = `${nSel} selected`;
+}
+$('#clientSearch').on('input', function(){ renderClientList(this.value); });
+$('#btnSelectAll').on('click', function(){
+  const all = [...document.querySelectorAll('#clientList .client-check')];
+  const shouldSelect = all.some(cb => !cb.checked);
+  all.forEach(cb => cb.checked = shouldSelect);
+  this.textContent = shouldSelect ? 'Unselect All' : 'Select All';
+  updateSelectedCount();
+});
+$(document).on('change', '.client-check', updateSelectedCount);
+
+// ---------- SHARE ----------
+$(document).on('click', '.btn-share', async function(){
+  const id = String($(this).data('id'));
+  const product = productsById.get(id);
+  if(!product){ toast('Product not found','danger'); return; }
+
+  // badge + hidden inputs
+  $('#shareProductId').val(id);
+  $('#shareProductNameBadge').text(product.name || '').prop('hidden', !(product.name||'').length);
+  $('#btnCopyLinks').addClass('d-none');
+  lastBuiltLinks = [];
+
+  // default message (include Combo)
+  try {
+    const res = await fetch(`/products/share/default_message?product_id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if(data && data.success) {
+      // If your backend already returns combo, great; otherwise we append it.
+      const comboLine = `Combo (S-Price + S-Tax): GHS ${money(combo(product))}`;
+      const msg = (data.message || '').trim();
+      $('#shareMessage').val(msg.includes('Combo') ? msg : (msg ? `${msg}\n${comboLine}` : comboLine));
+    } else {
+      const s = n(product.s_price), p = n(product.p_price);
+      $('#shareMessage').val(
+        `Price update — ${product.name || 'Product'}\n`+
+        `S-Price: GHS ${s.toFixed(2)}\n`+
+        `S-Tax: GHS ${n(product.s_tax).toFixed(2)}\n`+
+        `Combo (S-Price + S-Tax): GHS ${combo(product).toFixed(2)}\n`+
+        `P-Price: GHS ${p.toFixed(2)}`
+      );
+    }
+  } catch (e) {
+    $('#shareMessage').val(
+      `Price update — ${product.name || 'Product'}\n`+
+      `S-Price: GHS ${n(product.s_price).toFixed(2)}\n`+
+      `S-Tax: GHS ${n(product.s_tax).toFixed(2)}\n`+
+      `Combo (S-Price + S-Tax): GHS ${combo(product).toFixed(2)}`
+    );
+  }
+
+  // load clients (only once per page load)
+  if(!cachedClients.length) await loadClients(); else renderClientList();
+
+  new bootstrap.Modal(document.getElementById('shareModal')).show();
+});
+
+$('#btnCopyMessage').on('click', async () => {
+  try { await navigator.clipboard.writeText($('#shareMessage').val()); toast('Message copied','success'); }
+  catch { toast('Copy failed','danger'); }
+});
+
+$('#btnCopyLinks').on('click', async () => {
+  if(!lastBuiltLinks.length){ toast('No links yet','warning'); return; }
+  const txt = lastBuiltLinks.map(l => l.url).join('\n');
+  try { await navigator.clipboard.writeText(txt); toast('Links copied','success'); }
+  catch { toast('Copy failed','danger'); }
+});
+
+$('#shareForm').on('submit', async function(e){
+  e.preventDefault();
+  const product_id = $('#shareProductId').val();
+  const message = ($('#shareMessage').val() || '').trim();
+  const client_ids = [...document.querySelectorAll('#clientList .client-check:checked')].map(cb => cb.value);
+  if(!product_id){ toast('Missing product','danger'); return; }
+  if(!message){ toast('Write a message','warning'); return; }
+  if(!client_ids.length){ toast('Select at least one client','warning'); return; }
+
+  try {
+    const res = await fetch('/products/share/build', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id, message, client_ids })
+    });
+    const data = await res.json();
+    if(!data.success){ toast(data.message || 'Failed to build links','danger'); return; }
+
+    lastBuiltLinks = Array.isArray(data.links) ? data.links : [];
+    if(!lastBuiltLinks.length){ toast('No valid WhatsApp numbers for selected clients','warning'); return; }
+
+    // open each wa.me link in a new tab (browser will usually allow a few)
+    lastBuiltLinks.forEach((link, idx) => {
+      const url = link.url || (`https://wa.me/${link.number}?text=${encodeURIComponent(message)}`);
+      setTimeout(() => window.open(url, '_blank'), idx * 150);
+    });
+
+    $('#btnCopyLinks').removeClass('d-none');
+    toast('Opening WhatsApp chats…','success');
+  } catch (err) {
+    console.error(err);
+    toast('Share failed','danger');
+  }
+});
+
+// ---------- Init ----------
+$(document).ready(function(){ loadProducts(); });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
