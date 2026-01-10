@@ -108,17 +108,7 @@
 
   <!-- Initial counts JSON -->
   <script id="initialCounts" type="application/json">
-  {{ {
-    "unapproved_orders_count": unapproved_orders_count|default(0),
-    "unconfirmed_payments_count": unconfirmed_payments_count|default(0),
-    "unconfirmed_truck_payments_count": unconfirmed_truck_payments_count|default(0),
-    "pending_payment_vouchers_count": pending_payment_vouchers_count|default(0),
-    "truck_debtors_count": truck_debtors_count|default(0),
-    "omc_debtors_count": omc_debtors_count|default(0),
-    "omc_outstanding_total": omc_outstanding_total|default(0.0),
-    "bdc_debtors_count": bdc_debtors_count|default(0),
-    "bdc_outstanding_total": bdc_outstanding_total|default(0.0)
-  }|tojson }}
+  {{ {}|tojson }}
   </script>
 
   <!-- Toggle Button -->
@@ -360,29 +350,76 @@
         </div>
         <div class="modal-body">
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <div class="text-muted small">Showing payment vouchers awaiting approval.</div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshPaymentApprovals">
-              <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-            </button>
+            <div class="text-muted small" id="pvModalHint">Showing payment vouchers awaiting approval.</div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshPaymentApprovals">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+              </button>
+            </div>
           </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>PV No.</th>
-                  <th>Date</th>
-                  <th>Payee</th>
-                  <th class="text-end">Amount</th>
-                  <th>Status</th>
-                  <th class="text-end">Action</th>
-                </tr>
-              </thead>
-              <tbody id="paymentApprovalsBody">
-                <tr>
-                  <td colspan="6" class="text-center text-muted small">Loading vouchers...</td>
-                </tr>
-              </tbody>
-            </table>
+
+          <ul class="nav nav-tabs mb-2" id="pvTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="pv-pending-tab" data-bs-toggle="tab" data-bs-target="#pv-pending" type="button" role="tab" aria-controls="pv-pending" aria-selected="true">
+                Pending
+              </button>
+            </li>
+            {% if SUPER or ('payment_vouchers:view_deleted' in ALLOWED) %}
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="pv-deleted-tab" data-bs-toggle="tab" data-bs-target="#pv-deleted" type="button" role="tab" aria-controls="pv-deleted" aria-selected="false">
+                Recently Deleted
+              </button>
+            </li>
+            {% endif %}
+          </ul>
+
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="pv-pending" role="tabpanel" aria-labelledby="pv-pending-tab">
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>PV No.</th>
+                      <th>Date</th>
+                      <th>Payee</th>
+                      <th class="text-end">Amount</th>
+                      <th>Status</th>
+                      <th class="text-end">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paymentApprovalsBody">
+                    <tr>
+                      <td colspan="6" class="text-center text-muted small">Loading vouchers...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {% if SUPER or ('payment_vouchers:view_deleted' in ALLOWED) %}
+            <div class="tab-pane fade" id="pv-deleted" role="tabpanel" aria-labelledby="pv-deleted-tab">
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>PV No.</th>
+                      <th>Date</th>
+                      <th>Payee</th>
+                      <th class="text-end">Amount</th>
+                      <th>Deleted At</th>
+                      <th>Deleted By</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody id="paymentDeletedBody">
+                    <tr>
+                      <td colspan="7" class="text-center text-muted small">Loading deleted vouchers...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -448,6 +485,9 @@
   <!-- Live badges -->
   <script>
     const prev = JSON.parse(document.getElementById('initialCounts').textContent || '{}');
+    let metricsLoaded = false;
+    let pulseTimer = null;
+    let metricsAbort = null;
 
     function setBadge(id, count){
       const el = document.getElementById(id); if(!el) return;
@@ -503,45 +543,67 @@
       if(Number(newVal)>Number(oldVal)){ const d=Number(newVal)-Number(oldVal); showToast('Update','+'+d+' new '+label); }
     }
 
+    function applyMetrics(c){
+      if (!c) return;
+      diffNotify(prev.unapproved_orders_count, c.unapproved_orders_count, 'orders pending approval');
+      setBadge('badge-orders', c.unapproved_orders_count);
+      setBadge('badge-orders-sub', c.unapproved_orders_count);
+
+      diffNotify(prev.unconfirmed_payments_count, c.unconfirmed_payments_count, 'payments awaiting confirmation');
+      setBadge('badge-payments', c.unconfirmed_payments_count);
+      setBadge('badge-payments-sub', c.unconfirmed_payments_count);
+
+      diffNotify(prev.pending_payment_vouchers_count, c.pending_payment_vouchers_count, 'payment vouchers pending approval');
+      setBadge('badge-payment-approvals', c.pending_payment_vouchers_count);
+
+      diffNotify(prev.unconfirmed_truck_payments_count, c.unconfirmed_truck_payments_count, 'truck payments awaiting confirmation');
+      setBadge('badge-truck', c.unconfirmed_truck_payments_count);
+      setBadge('badge-truck-sub', c.unconfirmed_truck_payments_count);
+
+      setBadge('badge-truck-debtors', c.truck_debtors_count);
+
+      const ob=document.getElementById('badge-omc');
+      const bb=document.getElementById('badge-bdc');
+      const omcTip=(c.omc_debtors_count||0)+' OMC'+((c.omc_debtors_count||0)===1?'':'s')+' with unpaid S-Tax · GHS '+money2(c.omc_outstanding_total);
+      const bdcTip=(c.bdc_debtors_count||0)+' BDC'+((c.bdc_debtors_count||0)===1?'':'s')+' with unpaid amount · GHS '+money2(c.bdc_outstanding_total);
+      setBadge('badge-omc', c.omc_debtors_count); updateTooltip(ob, omcTip);
+      setBadge('badge-bdc', c.bdc_debtors_count); updateTooltip(bb, bdcTip);
+
+      Object.assign(prev, c);
+    }
+
+    async function fetchMetricsOnce(){
+      if (metricsAbort) metricsAbort.abort();
+      metricsAbort = new AbortController();
+      try {
+        const res = await fetch('/dashboard/metrics', { cache:'no-store', signal: metricsAbort.signal });
+        const data = await res.json();
+        if (!res.ok || !data.ok || !data.counts) throw new Error(data?.error || 'Bad payload');
+        return data.counts;
+      } catch (_e) {
+        return null;
+      }
+    }
+
     let inFlight=false;
     async function pulse(){
-      if(inFlight || document.hidden) return; inFlight=true;
+      if(inFlight || document.hidden || !metricsLoaded) return; inFlight=true;
       try{
-        const res=await fetch('/dashboard/pulse',{cache:'no-store'});
-        if(!res.ok) throw new Error('Network');
-        const data=await res.json(); if(!data.ok||!data.counts) throw new Error('Bad payload');
-        const c=data.counts;
-
-        diffNotify(prev.unapproved_orders_count, c.unapproved_orders_count, 'orders pending approval');
-        setBadge('badge-orders', c.unapproved_orders_count);
-        setBadge('badge-orders-sub', c.unapproved_orders_count);
-
-        diffNotify(prev.unconfirmed_payments_count, c.unconfirmed_payments_count, 'payments awaiting confirmation');
-        setBadge('badge-payments', c.unconfirmed_payments_count);
-        setBadge('badge-payments-sub', c.unconfirmed_payments_count);
-
-        diffNotify(prev.pending_payment_vouchers_count, c.pending_payment_vouchers_count, 'payment vouchers pending approval');
-        setBadge('badge-payment-approvals', c.pending_payment_vouchers_count);
-
-        diffNotify(prev.unconfirmed_truck_payments_count, c.unconfirmed_truck_payments_count, 'truck payments awaiting confirmation');
-        setBadge('badge-truck', c.unconfirmed_truck_payments_count);
-        setBadge('badge-truck-sub', c.unconfirmed_truck_payments_count);
-
-        setBadge('badge-truck-debtors', c.truck_debtors_count);
-
-        const ob=document.getElementById('badge-omc');
-        const bb=document.getElementById('badge-bdc');
-        const omcTip=(c.omc_debtors_count||0)+' OMC'+((c.omc_debtors_count||0)===1?'':'s')+' with unpaid S-Tax · GHS '+money2(c.omc_outstanding_total);
-        const bdcTip=(c.bdc_debtors_count||0)+' BDC'+((c.bdc_debtors_count||0)===1?'':'s')+' with unpaid amount · GHS '+money2(c.bdc_outstanding_total);
-        setBadge('badge-omc', c.omc_debtors_count); updateTooltip(ob, omcTip);
-        setBadge('badge-bdc', c.bdc_debtors_count); updateTooltip(bb, bdcTip);
-
-        Object.assign(prev, c);
-      }catch(_e){ } finally { inFlight=false; }
+        const counts = await fetchMetricsOnce();
+        if (counts) applyMetrics(counts);
+      }finally { inFlight=false; }
     }
+
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pulse(); });
-    setInterval(pulse, 1000);
-    window.addEventListener('load', pulse);
+    document.addEventListener('DOMContentLoaded', async () => {
+      const counts = await fetchMetricsOnce();
+      if (counts){
+        applyMetrics(counts);
+        metricsLoaded = true;
+        pulse();
+        pulseTimer = setInterval(pulse, 7000);
+      }
+    });
   </script>
 
   <script>
@@ -552,9 +614,12 @@
       const pendingUrl = modal.dataset.pendingUrl;
       const approveTpl = modal.dataset.approveUrl;
       const viewTpl = modal.dataset.viewUrl;
+      const deletedUrl = '/accounting/payment-vouchers/deleted';
       const body = document.getElementById('paymentApprovalsBody');
+      const deletedBody = document.getElementById('paymentDeletedBody');
       const refreshBtn = document.getElementById('refreshPaymentApprovals');
       const badge = document.getElementById('badge-payment-approvals');
+      const hint = document.getElementById('pvModalHint');
 
       function fmtMoney(n){
         return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -598,6 +663,30 @@
         body.innerHTML = rows;
       }
 
+      function renderDeletedRows(vouchers){
+        if (!deletedBody) return;
+        if (!vouchers.length) {
+          deletedBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted small">No deleted vouchers.</td></tr>';
+          return;
+        }
+        const rows = vouchers.map(v => {
+          const viewUrl = viewTpl.replace('__ID__', v.id);
+          const reason = v.delete_reason || '';
+          return `
+            <tr>
+              <td><a href="${viewUrl}" target="_blank" rel="noopener">${v.pv_number || ''}</a></td>
+              <td class="small">${v.date || ''}</td>
+              <td class="small">${v.to_name || ''}</td>
+              <td class="text-end small">GHS ${fmtMoney(v.total_payable)}</td>
+              <td class="small">${v.deleted_at || ''}</td>
+              <td class="small">${v.deleted_by || ''}</td>
+              <td class="small" title="${reason}">${reason || '-'}</td>
+            </tr>
+          `;
+        }).join('');
+        deletedBody.innerHTML = rows;
+      }
+
       async function loadPending(){
         if (!body) return;
         body.innerHTML = '<tr><td colspan="6" class="text-center text-muted small">Loading vouchers...</td></tr>';
@@ -609,6 +698,20 @@
           setBadgeCount(vouchers.length);
         } catch (e) {
           body.innerHTML = '<tr><td colspan="6" class="text-center text-danger small">Failed to load vouchers.</td></tr>';
+        }
+      }
+
+      async function loadDeleted(){
+        if (!deletedBody) return;
+        deletedBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted small">Loading deleted vouchers...</td></tr>';
+        try {
+          const res = await fetch(deletedUrl, { cache: 'no-store' });
+          const data = await res.json();
+          if (!res.ok || !data.ok) throw new Error(data?.error || 'Failed to load deleted vouchers.');
+          const vouchers = data?.vouchers || [];
+          renderDeletedRows(vouchers);
+        } catch (e) {
+          deletedBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger small">Failed to load deleted vouchers.</td></tr>';
         }
       }
 
@@ -637,11 +740,29 @@
       }
 
       modal.addEventListener('show.bs.modal', loadPending);
-      refreshBtn?.addEventListener('click', loadPending);
+      refreshBtn?.addEventListener('click', function () {
+        const active = document.querySelector('#pvTabs .nav-link.active');
+        if (active && active.id === 'pv-deleted-tab') {
+          loadDeleted();
+        } else {
+          loadPending();
+        }
+      });
       body?.addEventListener('click', function (e) {
         const btn = e.target.closest('.js-approve-voucher');
         if (!btn) return;
         approveVoucher(btn.dataset.id, btn);
+      });
+
+      const deletedTab = document.getElementById('pv-deleted-tab');
+      const pendingTab = document.getElementById('pv-pending-tab');
+      deletedTab?.addEventListener('shown.bs.tab', function () {
+        if (hint) hint.textContent = 'Showing recently deleted vouchers.';
+        loadDeleted();
+      });
+      pendingTab?.addEventListener('shown.bs.tab', function () {
+        if (hint) hint.textContent = 'Showing payment vouchers awaiting approval.';
+        loadPending();
       });
     })();
   </script>
