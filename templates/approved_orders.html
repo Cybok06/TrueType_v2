@@ -95,6 +95,19 @@
   <!-- Filters Row (per-column dropdowns) -->
   <div class="row mt-3 g-2" id="filtersRow"></div>
 
+  <div class="row mt-2 align-items-center g-2">
+    <div class="col-auto">
+      <button id="reloadOrders" class="btn btn-outline-secondary btn-sm" type="button">
+        <i class="bi bi-arrow-clockwise me-1"></i> Reload
+      </button>
+    </div>
+    <div class="col-auto ms-auto d-flex align-items-center gap-2">
+      <button id="prevPage" class="btn btn-outline-primary btn-sm" type="button">Prev</button>
+      <span id="pageIndicator" class="small text-muted">Page 1 of 1</span>
+      <button id="nextPage" class="btn btn-outline-primary btn-sm" type="button">Next</button>
+    </div>
+  </div>
+
   <div class="table-responsive" id="tableHost">
     <!-- Edge fades (auto hidden via JS if no overflow) -->
     <div class="edge-fade left d-none" aria-hidden="true"></div>
@@ -138,225 +151,169 @@
           <th class="no-export">Actions</th>
         </tr>
       </thead>
-      <tbody>
-      {% for order in orders %}
-        {% set s_component_total = (order.s_tax or 0.0) + (order.s_bdc_omc or 0.0) %}
-        {% set left_amt = (order.total_debt or 0.0) - (order.amount_paid or 0.0) %}
-        {% set mode = (order.order_type or 'combo').replace('-','_') %}
-        <tr data-left="{{ '%.2f' % left_amt }}">
-          <td>{{ order.order_id or '-' }}</td>
-          <td>{{ order.date.strftime('%d-%b-%Y') if order.date else '-' }}</td>
-          <td>{% if order.approved_at %}{{ order.approved_at.strftime('%d-%b-%Y %H:%M') }} GMT{% else %}-{% endif %}</td>
-          <td><a href="/admin/client/{{ order.client_mongo_id }}" class="text-decoration-none fw-semibold text-primary">{{ order.client_name }}</a></td>
-          <td>{{ order.vehicle_number }}</td>
-          <td>{{ order.region }}</td>
-          <td>{{ order.product }}</td>
-          <td>{{ (order.order_type or '-').upper() }}</td>
-          <td>{{ order.omc or '-' }}</td>
-          <td>{{ order.bdc_name or '-' }}</td>
-          <td>{{ order.depot }}</td>
-          <td>{{ "{:,}".format((order.quantity or 0)|int) }}</td>
-          <td>{{ "{:,.2f}".format(order.p_bdc_omc or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.s_bdc_omc or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.p_tax or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.s_tax or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(s_component_total) }}</td>
-          <td>{{ "{:,.2f}".format(order.margin or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.returns or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.total_debt or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(order.amount_paid or 0.0) }}</td>
-          <td>{{ "{:,.2f}".format(left_amt) }}</td>
-          <td>
-            {% if order.shareholder %}
-              <span class="badge {% if order.shareholder == 'Neutral' %}bg-secondary{% else %}bg-primary{% endif %}">{{ order.shareholder }}</span>
-            {% else %} — {% endif %}
-          </td>
-          <td>
-            {% if order.delivery_status %}
-              <span class="badge bg-{{ 'success' if order.delivery_status|lower == 'delivered' else 'warning' }}">{{ order.delivery_status }}</span>
-            {% else %}
-              <span class="badge bg-secondary">Pending</span>
-            {% endif %}
-          </td>
-          <td class="d-flex gap-1 justify-content-center">
-            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ order._id }}">
-              <i class="bi bi-pencil-square me-1"></i> Edit
-            </button>
-
-            {% set can_cancel = left_amt > 0 %}
-            <button
-              class="btn btn-sm btn-outline-danger cancel-open-btn"
-              data-bs-toggle="modal"
-              data-bs-target="#cancelModal{{ order._id }}"
-              data-left="{{ '%.2f' % left_amt }}"
-              {% if not can_cancel %}disabled aria-disabled="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Fully settled — nothing left to cancel"{% endif %}
-            >
-              <i class="bi bi-x-octagon me-1"></i> Cancel
-            </button>
+      <tbody id="ordersTbody">
+        <tr class="loading-row">
+          <td colspan="25" class="text-muted">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Loading orders...
           </td>
         </tr>
-
-        <!-- Edit Modal -->
-        <div class="modal fade" id="editModal{{ order._id }}" tabindex="-1" aria-labelledby="editModalLbl{{ order._id }}" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-scrollable modal-lg">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title" id="editModalLbl{{ order._id }}">Edit Order – {{ order.order_id or order._id }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-
-              <form class="edit-order-form" method="POST" action="/orders/update/{{ order._id }}" data-id="{{ order._id }}">
-                <div class="modal-body">
-                  <div class="mb-3">
-                    <label class="form-label">Order Type</label>
-                    <div>
-                      <span class="badge
-                        {% if mode=='s_bdc' %} bg-primary
-                        {% elif mode=='s_tax' %} bg-warning text-dark
-                        {% else %} bg-success
-                        {% endif %}">{{ (order.order_type or 'combo').upper() }}</span>
-                    </div>
-                    <input type="hidden" name="order_type" value="{{ mode }}">
-                  </div>
-
-                  <div class="row g-3">
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">Shareholder</label>
-                      <select name="shareholder" class="form-select">
-                        <option value="">Select Shareholder</option>
-                        <option value="Rex"    {% if order.shareholder == 'Rex' %}selected{% endif %}>Rex</option>
-                        <option value="Simon"  {% if order.shareholder == 'Simon' %}selected{% endif %}>Simon</option>
-                        <option value="Paul"   {% if order.shareholder == 'Paul' %}selected{% endif %}>Paul</option>
-                        <option value="Neutral"{% if order.shareholder == 'Neutral' %}selected{% endif %}>Neutral</option>
-                      </select>
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">OMC</label>
-                      <select name="omc" class="form-control omc-select">
-                        <option value="">Select OMC</option>
-                        {% for o in omcs %}
-                          <option value="{{ o.name }}" data-rep-phone="{{ o.rep_phone or '' }}"
-                                  {% if (order.omc or '') == (o.name or '') %}selected{% endif %}>
-                            {{ o.name }}{% if o.rep_phone %} — {{ o.rep_phone }}{% endif %}
-                          </option>
-                        {% endfor %}
-                      </select>
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">BDC</label>
-                      <select name="bdc" class="form-control bdc-select">
-                        <option value="">Select BDC</option>
-                        {% for b in bdcs %}
-                          <option value="{{ b._id }}" data-bdc-name="{{ b.name }}"
-                                  data-rep-phone="{{ b.rep_phone or b.phone or '' }}"
-                                  {% if (order.bdc_id|string) == (b._id|string) %}selected{% endif %}>
-                            {{ b.name }}{% if b.rep_phone or b.phone %} — {{ b.rep_phone or b.phone }}{% endif %}
-                          </option>
-                        {% endfor %}
-                      </select>
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">DEPOT</label>
-                      <input type="text" name="depot" class="form-control" value="{{ order.depot or '' }}" required>
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">P-BDC</label>
-                      <input type="number" step="0.01" name="p_bdc_omc" class="form-control" value="{{ order.p_bdc_omc or '' }}">
-                    </div>
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">S-BDC</label>
-                      <input type="number" step="0.01" name="s_bdc_omc" class="form-control" value="{{ order.s_bdc_omc or '' }}">
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">P-Tax</label>
-                      <input type="number" step="0.01" name="p_tax" class="form-control" value="{{ order.p_tax or '' }}">
-                    </div>
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">S-Tax</label>
-                      <input type="number" step="0.01" name="s_tax" class="form-control" value="{{ order.s_tax or '' }}">
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">Payment Type (BDC)</label>
-                      <select class="form-select" name="payment_type">
-                        <option value="">Select Payment Type</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Credit">Credit</option>
-                        <option value="From Account">From Account</option>
-                      </select>
-                    </div>
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">Payment Amount (optional)</label>
-                      <input type="number" step="0.01" name="payment_amount" class="form-control" placeholder="Auto: qty × P-BDC">
-                    </div>
-
-                    <div class="col-12 col-sm-6 col-lg-4">
-                      <label class="form-label">Due Date</label>
-                      <input type="date" name="due_date" class="form-control"
-                             value="{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '' }}">
-                      <div class="form-text text-muted">Only today or future dates are allowed.</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="modal-footer">
-                  <div class="me-auto small text-muted">Quantity: {{ order.quantity or 0 }} L • Product: {{ order.product or '-' }}</div>
-                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                  <button type="submit" class="btn btn-primary">
-                    <span class="btn-label"><i class="bi bi-save me-1"></i> Save Changes</span>
-                    <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cancel Modal -->
-        <div class="modal fade" id="cancelModal{{ order._id }}" tabindex="-1" aria-labelledby="cancelModalLbl{{ order._id }}" aria-hidden="true">
-          <div class="modal-dialog modal-dialog-scrollable">
-            <div class="modal-content">
-              <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="cancelModalLbl{{ order._id }}"><i class="bi bi-x-octagon me-2"></i>Cancel Order — {{ order.order_id or order._id }}</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <form class="cancel-order-form" data-id="{{ order._id }}" data-left="{{ '%.2f' % left_amt }}">
-                <div class="modal-body">
-                  <div class="alert alert-warning" role="alert">
-                    <div class="fw-semibold mb-1">This will:</div>
-                    <ul class="mb-0 text-start">
-                      <li>Delete BDC payable record(s) for this order.</li>
-                      <li>Delete OMC returns record(s) for this order.</li>
-                      <li>Set <code>status</code> to <strong>cancled</strong> or <strong>cancled – &lt;reason&gt;</strong>.</li>
-                      <li>Reset <code>returns</code>, <code>returns_total</code> (and related fields) to <strong>0.00</strong>.</li>
-                    </ul>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label fw-semibold">Reason for canceling (optional)</label>
-                    <textarea class="form-control" name="reason" rows="3" placeholder="Optional note for auditing…"></textarea>
-                    <div class="form-text text-danger-soft">Reason is stored on the order (status can become <em>cancled – reason</em>).</div>
-                  </div>
-                  <div class="cancel-error alert alert-danger d-none" role="alert"></div>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                  <button type="submit" class="btn btn-danger">
-                    <span class="btn-label">Confirm Cancel</span>
-                    <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Edit Modal (single instance) -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLbl" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editModalLbl">Edit Order - <span class="edit-order-id"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form class="edit-order-form" method="POST" action="" data-id="">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Order Type</label>
+            <div>
+              <span class="badge order-type-badge"></span>
+            </div>
+            <input type="hidden" name="order_type" value="combo">
+          </div>
+
+          <div class="edit-error alert alert-danger d-none" role="alert"></div>
+
+          <div class="row g-3">
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">Shareholder</label>
+              <select name="shareholder" class="form-select">
+                <option value="">Select Shareholder</option>
+                <option value="Rex">Rex</option>
+                <option value="Simon">Simon</option>
+                <option value="Paul">Paul</option>
+                <option value="Neutral">Neutral</option>
+              </select>
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">OMC</label>
+              <select name="omc" class="form-control omc-select">
+                <option value="">Select OMC</option>
+                {% for o in omcs %}
+                  <option value="{{ o.name }}" data-rep-phone="{{ o.rep_phone or '' }}">
+                    {{ o.name }}{% if o.rep_phone %} - {{ o.rep_phone }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">BDC</label>
+              <select name="bdc" class="form-control bdc-select">
+                <option value="">Select BDC</option>
+                {% for b in bdcs %}
+                  <option value="{{ b._id }}" data-bdc-name="{{ b.name }}"
+                          data-rep-phone="{{ b.rep_phone or b.phone or '' }}">
+                    {{ b.name }}{% if b.rep_phone or b.phone %} - {{ b.rep_phone or b.phone }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">DEPOT</label>
+              <input type="text" name="depot" class="form-control" value="" required>
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">P-BDC</label>
+              <input type="number" step="0.01" name="p_bdc_omc" class="form-control" value="">
+            </div>
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">S-BDC</label>
+              <input type="number" step="0.01" name="s_bdc_omc" class="form-control" value="">
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">P-Tax</label>
+              <input type="number" step="0.01" name="p_tax" class="form-control" value="">
+            </div>
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">S-Tax</label>
+              <input type="number" step="0.01" name="s_tax" class="form-control" value="">
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">Payment Type (BDC)</label>
+              <select class="form-select" name="payment_type">
+                <option value="">Select Payment Type</option>
+                <option value="Cash">Cash</option>
+                <option value="Credit">Credit</option>
+                <option value="From Account">From Account</option>
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">Payment Amount (optional)</label>
+              <input type="number" step="0.01" name="payment_amount" class="form-control" placeholder="Auto: qty x P-BDC">
+            </div>
+
+            <div class="col-12 col-sm-6 col-lg-4">
+              <label class="form-label">Due Date</label>
+              <input type="date" name="due_date" class="form-control" value="">
+              <div class="form-text text-muted">Only today or future dates are allowed.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <div class="me-auto small text-muted edit-order-summary"></div>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary">
+            <span class="btn-label"><i class="bi bi-save me-1"></i> Save Changes</span>
+            <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Cancel Modal (single instance) -->
+<div class="modal fade" id="cancelModal" tabindex="-1" aria-labelledby="cancelModalLbl" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="cancelModalLbl"><i class="bi bi-x-octagon me-2"></i>Cancel Order - <span class="cancel-order-id"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form class="cancel-order-form" data-id="" data-left="">
+        <div class="modal-body">
+          <div class="alert alert-warning" role="alert">
+            <div class="fw-semibold mb-1">This will:</div>
+            <ul class="mb-0 text-start">
+              <li>Delete BDC payable record(s) for this order.</li>
+              <li>Delete OMC returns record(s) for this order.</li>
+              <li>Set <code>status</code> to <strong>cancled</strong> or <strong>cancled - &lt;reason&gt;</strong>.</li>
+              <li>Reset <code>returns</code>, <code>returns_total</code> (and related fields) to <strong>0.00</strong>.</li>
+            </ul>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Reason for canceling (optional)</label>
+            <textarea class="form-control" name="reason" rows="3" placeholder="Optional note for auditing..."></textarea>
+            <div class="form-text text-danger-soft">Reason is stored on the order (status can become <em>cancled - reason</em>).</div>
+          </div>
+          <div class="cancel-error alert alert-danger d-none" role="alert"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-danger">
+            <span class="btn-label">Confirm Cancel</span>
+            <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -474,14 +431,117 @@
     setTimeout(updateHScrollUI, 0);
   }
 
-  // DataTable
-  $(function () {
-    const table = $('#approvedOrdersTable').DataTable({
+  const orderCache = {};
+  const pageSize = 10;
+  let table = null;
+  let currentPage = 1;
+  let totalPages = 1;
+  let currentQuery = ($('#globalSearch').val() || '').trim();
+  let loading = false;
+
+  function escapeHtml(s){
+    return String(s || '').replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+  function fmtNum(n, digits){
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '-';
+    return v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function fmtQty(n){ return fmtNum(n, 0); }
+
+  function setLoadingRow(text){
+    const msg = text || 'Loading orders...';
+    const row = `
+      <tr class="loading-row">
+        <td colspan="25" class="text-muted">
+          <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+          ${escapeHtml(msg)}
+        </td>
+      </tr>`;
+    $('#ordersTbody').html(row);
+  }
+
+  function modeBadgeClass(mode){
+    if (mode === 's_bdc') return 'bg-primary';
+    if (mode === 's_tax') return 'bg-warning text-dark';
+    return 'bg-success';
+  }
+  function modeLabel(mode){
+    if (mode === 's_bdc') return 'S-BDC';
+    if (mode === 's_tax') return 'S-TAX';
+    return 'COMBO';
+  }
+
+  function renderShareholder(shareholder){
+    if (!shareholder) return '-';
+    const cls = shareholder === 'Neutral' ? 'bg-secondary' : 'bg-primary';
+    return `<span class="badge ${cls}">${escapeHtml(shareholder)}</span>`;
+  }
+  function renderDeliveryStatus(status){
+    if (!status) return '<span class="badge bg-secondary">Pending</span>';
+    const cls = String(status).toLowerCase() === 'delivered' ? 'success' : 'warning';
+    return `<span class="badge bg-${cls}">${escapeHtml(status)}</span>`;
+  }
+
+  function renderRow(row){
+    orderCache[row._id] = row;
+    const leftAmt = Number(row.amount_left || 0);
+    const sTotal = Number(row.s_tax || 0) + Number(row.s_bdc_omc || 0);
+    const invoiceUrl = `/orders/invoice/${encodeURIComponent(row._id)}`;
+    const clientUrl = row.client_mongo_id ? `/admin/client/${encodeURIComponent(row.client_mongo_id)}` : '#';
+
+    return `
+      <tr data-left="${leftAmt.toFixed(2)}">
+        <td>${escapeHtml(row.order_id || '-')}</td>
+        <td>${escapeHtml(row.date || '-')}</td>
+        <td>${escapeHtml(row.approved_at || '-')}</td>
+        <td><a href="${clientUrl}" class="text-decoration-none fw-semibold text-primary">${escapeHtml(row.client_name || 'Unknown')}</a></td>
+        <td>${escapeHtml(row.vehicle_number || '')}</td>
+        <td>${escapeHtml(row.region || '')}</td>
+        <td>${escapeHtml(row.product || '')}</td>
+        <td>${escapeHtml(row.order_type || '-')}</td>
+        <td>${escapeHtml(row.omc || '-')}</td>
+        <td>${escapeHtml(row.bdc_name || '-')}</td>
+        <td>${escapeHtml(row.depot || '')}</td>
+        <td>${fmtQty(row.quantity)}</td>
+        <td>${fmtNum(row.p_bdc_omc, 2)}</td>
+        <td>${fmtNum(row.s_bdc_omc, 2)}</td>
+        <td>${fmtNum(row.p_tax, 2)}</td>
+        <td>${fmtNum(row.s_tax, 2)}</td>
+        <td>${fmtNum(sTotal, 2)}</td>
+        <td>${fmtNum(row.margin, 2)}</td>
+        <td>${fmtNum(row.returns, 2)}</td>
+        <td>${fmtNum(row.total_debt, 2)}</td>
+        <td>${fmtNum(row.amount_paid, 2)}</td>
+        <td>${fmtNum(leftAmt, 2)}</td>
+        <td>${renderShareholder(row.shareholder)}</td>
+        <td>${renderDeliveryStatus(row.delivery_status)}</td>
+        <td class="d-flex gap-1 justify-content-center">
+          <button class="btn btn-sm btn-outline-primary edit-open-btn" data-id="${escapeHtml(row._id)}">
+            <i class="bi bi-pencil-square me-1"></i> Edit
+          </button>
+          <button class="btn btn-sm btn-outline-danger cancel-open-btn" data-id="${escapeHtml(row._id)}" data-left="${leftAmt.toFixed(2)}">
+            <i class="bi bi-x-octagon me-1"></i> Cancel
+          </button>
+          <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener" href="${invoiceUrl}">
+            <i class="bi bi-receipt me-1"></i> Invoice
+          </a>
+        </td>
+      </tr>`;
+  }
+
+  function initDataTable(){
+    if (table) return;
+    table = $('#approvedOrdersTable').DataTable({
       responsive: false,
       scrollX: true,
-      ordering: true,
-      pageLength: 50,
-      order: [[2, 'desc']],
+      ordering: false,
+      paging: false,
+      searching: false,
+      info: false,
+      lengthChange: false,
       dom: 'Bfrtip',
       buttons: [
         { extend: 'excelHtml5', className: 'btn btn-success btn-sm', title: 'Approved Orders',
@@ -521,102 +581,124 @@
         { extend: 'print', className: 'btn btn-secondary btn-sm', title: 'Approved Orders',
           exportOptions: { modifier: { page: 'all', search: 'applied' }, columns: ':visible:not(.no-export)' } }
       ],
-      columnDefs: [{
-        targets: '_all',
-        render: function (data, type) {
-          const htmlToText = (val) => {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = val == null ? '' : String(val);
-            return (tmp.textContent || tmp.innerText || '').trim();
-          };
-          if (type === 'sort') {
-            const text = htmlToText(data).replace(/,/g, '');
-            const num = parseFloat(text);
-            return isNaN(num) ? text : num;
-          }
-          if (type === 'filter') return htmlToText(data);
-          return data;
-        }
-      }]
+      language: { emptyTable: 'No orders found.' }
     });
 
-    // Global search
-    const $gs = $('#globalSearch');
-    const initialQ = ($gs.val() || '').trim();
-    if (initialQ) table.search(initialQ).draw();
-    $gs.on('keyup change', function () { table.search(this.value).draw(); });
-    $('#clearSearch').on('click', function () { $gs.val(''); table.search('').draw(); });
-
-    // Per-column filters
-    $('#filtersRow').empty();
-    table.columns().every(function () {
-      const column = this;
-      const header = $(column.header()).text().trim();
-      const $wrap = $(`
-        <div class="col-6 col-md-3 col-lg-2">
-          <select class="form-select form-select-sm" title="${header}">
-            <option value="">All ${header}</option>
-          </select>
-        </div>
-      `).appendTo('#filtersRow');
-      const $select = $wrap.find('select');
-
-      $select.on('change', function () {
-        const val = $.fn.dataTable.util.escapeRegex($(this).val());
-        column.search(val ? '^' + val + '$' : '', true, false).draw();
-      });
-
-      column.data().unique().sort().each(function (d) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = (d || '').toString();
-        const text = (tmp.textContent || tmp.innerText || '').trim();
-        if (text !== '') $select.append(`<option value="${text}">${text}</option>`);
-      });
-    });
-
-    // Enable tooltips on any disabled cancel buttons rendered with title
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"][disabled]'));
-    tooltipTriggerList.forEach(function (el) {
-      new bootstrap.Tooltip(el);
-    });
-
-    // Attach and initialize horizontal scroll controls (after DataTables renders its scroll body)
     setTimeout(() => {
       attachHScrollControls();
       updateHScrollUI();
     }, 0);
+  }
+
+  function updatePaginationUI(){
+    $('#pageIndicator').text(`Page ${currentPage} of ${totalPages}`);
+    $('#prevPage').prop('disabled', currentPage <= 1);
+    $('#nextPage').prop('disabled', currentPage >= totalPages);
+  }
+
+  function updateCancelButtons(){
+    $('tr[data-left]').each(function(){
+      const left = parseFloat($(this).data('left') || '0');
+      const $btn = $(this).find('.cancel-open-btn');
+      if (left <= 0){
+        $btn.prop('disabled', true).attr('aria-disabled', 'true')
+          .attr('title', 'Fully settled - nothing left to cancel')
+          .attr('data-bs-toggle','tooltip').attr('data-bs-placement','top');
+      } else {
+        $btn.prop('disabled', false).removeAttr('aria-disabled').removeAttr('title')
+          .removeAttr('data-bs-toggle').removeAttr('data-bs-placement');
+      }
+    });
+  }
+
+  function loadOrders(page){
+    if (loading) return;
+    loading = true;
+    currentPage = page || 1;
+    if (table) {
+      table.clear().draw(false);
+    } else {
+      setLoadingRow('Loading orders...');
+    }
+    showPageSpin();
+
+    $.get('/approved_orders/data', { page: currentPage, page_size: pageSize, q: currentQuery })
+      .done(function(res){
+        if (!res || res.success !== true){
+          setLoadingRow(res?.error || 'Failed to load orders.');
+          return;
+        }
+
+        totalPages = res.total_pages || 1;
+        currentPage = res.page || currentPage;
+        updatePaginationUI();
+
+        const rows = res.rows || [];
+        Object.keys(orderCache).forEach(k => delete orderCache[k]);
+
+        const htmlRows = rows.map(renderRow).join('');
+        if (!table){
+          $('#ordersTbody').html(htmlRows || '');
+          initDataTable();
+        } else {
+          table.clear();
+          if (htmlRows){
+            table.rows.add($(htmlRows));
+          }
+          table.draw(false);
+        }
+
+        if (!rows.length){
+          if (table){
+            table.clear().draw(false);
+          } else {
+            $('#ordersTbody').html('');
+          }
+        }
+
+        updateCancelButtons();
+        updateHScrollUI();
+      })
+      .fail(function(xhr){
+        const err = xhr.responseJSON?.error || 'Failed to load orders.';
+        setLoadingRow(err);
+      })
+      .always(function(){
+        loading = false;
+        hidePageSpin();
+      });
+  }
+
+  // Search and pagination controls
+  let searchTimer = null;
+  $('#globalSearch').on('keyup change', function(){
+    clearTimeout(searchTimer);
+    const val = ($(this).val() || '').trim();
+    searchTimer = setTimeout(function(){
+      currentQuery = val;
+      loadOrders(1);
+    }, 300);
   });
+  $('#clearSearch').on('click', function(){
+    $('#globalSearch').val('');
+    currentQuery = '';
+    loadOrders(1);
+  });
+  $('#reloadOrders').on('click', function(){ loadOrders(currentPage); });
+  $('#prevPage').on('click', function(){ if (currentPage > 1) loadOrders(currentPage - 1); });
+  $('#nextPage').on('click', function(){ if (currentPage < totalPages) loadOrders(currentPage + 1); });
 
   // Select2 inside modals
   $(document).on('shown.bs.modal', '.modal', function () {
     const $m = $(this);
     $m.find('.omc-select, .bdc-select').each(function () {
-      $(this).select2({ placeholder: "Select or search...", dropdownParent: $m, width: '100%' });
+      if (!$(this).hasClass('select2-hidden-accessible')) {
+        $(this).select2({ placeholder: "Select or search...", dropdownParent: $m, width: '100%' });
+      }
     });
 
-    // Lock fields per mode (UI only; server enforces too)
     const $form = $m.find('form.edit-order-form');
     if ($form.length) {
-      const mode = ($form.find('input[name="order_type"]').val() || 'combo').toLowerCase();
-      const on  = ($el) => $el.prop('disabled', false).removeClass('dimmed');
-      const off = ($el) => $el.prop('disabled', true).addClass('dimmed');
-
-      const $p  = $form.find('input[name="p_bdc_omc"]');
-      const $s  = $form.find('input[name="s_bdc_omc"]');
-      const $pt = $form.find('input[name="p_tax"]');
-      const $st = $form.find('input[name="s_tax"]');
-      const $omc= $form.find('select[name="omc"]');
-      const $bdc= $form.find('select[name="bdc"]');
-
-      if (mode === 's_tax'){        // OMC (S-Tax) only
-        off($p); off($s); on($pt); on($st); on($omc); off($bdc);
-      } else if (mode === 's_bdc'){ // BDC (S-BDC) only
-        on($p); on($s); off($pt); off($st); off($omc); on($bdc);
-      } else {                      // combo
-        on($p); on($s); on($pt); on($st); on($omc); on($bdc);
-      }
-
-      // Enforce due date >= today
       const today = new Date();
       const pad = (n)=>String(n).padStart(2,'0');
       const min = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
@@ -626,20 +708,88 @@
     }
   });
 
+  function applyModeLock($form, mode){
+    const on  = ($el) => $el.prop('disabled', false).removeClass('dimmed');
+    const off = ($el) => $el.prop('disabled', true).addClass('dimmed');
+
+    const $p  = $form.find('input[name="p_bdc_omc"]');
+    const $s  = $form.find('input[name="s_bdc_omc"]');
+    const $pt = $form.find('input[name="p_tax"]');
+    const $st = $form.find('input[name="s_tax"]');
+    const $omc= $form.find('select[name="omc"]');
+    const $bdc= $form.find('select[name="bdc"]');
+
+    if (mode === 's_tax'){
+      off($p); off($s); on($pt); on($st); on($omc); off($bdc);
+    } else if (mode === 's_bdc'){
+      on($p); on($s); off($pt); off($st); off($omc); on($bdc);
+    } else {
+      on($p); on($s); on($pt); on($st); on($omc); on($bdc);
+    }
+  }
+
+  // Open edit modal
+  $(document).on('click', '.edit-open-btn', function(){
+    const id = $(this).data('id');
+    const row = orderCache[id];
+    if (!row) return;
+
+    const $modal = $('#editModal');
+    const $form = $modal.find('form.edit-order-form');
+    const mode = (row.order_type_raw || 'combo').toLowerCase();
+
+    $modal.find('.edit-order-id').text(row.order_id || id);
+    $modal.find('.edit-order-summary').text(`Quantity: ${fmtQty(row.quantity)} L | Product: ${row.product || '-'}`);
+    $modal.find('.edit-error').addClass('d-none').text('');
+
+    $form.attr('data-id', id);
+    $form.attr('action', `/orders/update/${id}`);
+    $form.find('input[name="order_type"]').val(mode);
+    $modal.find('.order-type-badge').attr('class', `badge order-type-badge ${modeBadgeClass(mode)}`)
+      .text(modeLabel(mode));
+
+    $form.find('select[name="shareholder"]').val(row.shareholder || '');
+    $form.find('select[name="omc"]').val(row.omc || '').trigger('change');
+    $form.find('select[name="bdc"]').val(row.bdc_id || '').trigger('change');
+    $form.find('input[name="depot"]').val(row.depot || '');
+    $form.find('input[name="p_bdc_omc"]').val(row.p_bdc_omc ?? '');
+    $form.find('input[name="s_bdc_omc"]').val(row.s_bdc_omc ?? '');
+    $form.find('input[name="p_tax"]').val(row.p_tax ?? '');
+    $form.find('input[name="s_tax"]').val(row.s_tax ?? '');
+    $form.find('input[name="due_date"]').val(row.due_date || '');
+
+    applyModeLock($form, mode);
+
+    const modal = new bootstrap.Modal($modal[0]);
+    modal.show();
+  });
+
   // Prevent opening Cancel modal if Left <= 0 (client-side)
   $(document).on('click', '.cancel-open-btn', function(e){
     const left = parseFloat($(this).data('left') || '0');
     if (left <= 0){
       e.preventDefault();
       e.stopPropagation();
-      const t = new bootstrap.Tooltip(this, { title: 'Fully settled — nothing left to cancel', placement: 'top' });
+      const t = new bootstrap.Tooltip(this, { title: 'Fully settled - nothing left to cancel', placement: 'top' });
       t.show();
       setTimeout(()=>t.dispose(), 1500);
       return false;
     }
+
+    const id = $(this).data('id');
+    const row = orderCache[id] || {};
+    const $modal = $('#cancelModal');
+    $modal.find('.cancel-order-id').text(row.order_id || id);
+    const $form = $modal.find('form.cancel-order-form');
+    $form.attr('data-id', id);
+    $form.attr('data-left', left.toFixed(2));
+    $form.find('textarea[name="reason"]').val('');
+    $form.find('.cancel-error').addClass('d-none').text('');
+    const modal = new bootstrap.Modal($modal[0]);
+    modal.show();
   });
 
-  // Submit edits via AJAX → /orders/update/<id> with page overlay spinner
+  // Submit edits via AJAX -> /orders/update/<id> with page overlay spinner
   $(document).on('submit', '.edit-order-form', function(e){
     e.preventDefault();
     const $form = $(this);
@@ -666,31 +816,28 @@
 
     $btn.prop('disabled', true);
     $spin.removeClass('d-none');
+    $label.text('Saving...');
     showPageSpin();
 
     $.post(`/orders/update/${id}`, $form.serialize())
       .done(function(){
         $('.modal.show').modal('hide');
-        if (typeof loadContent === 'function') loadContent('/approved_orders', 'Approved Orders');
-        else location.reload();
+        loadOrders(currentPage);
       })
       .fail(function(xhr){
         const err = xhr.responseJSON?.error || 'Failed to update order.';
         const $err = $form.find('.edit-error');
-        if ($err.length){
-          $err.removeClass('d-none').text(err);
-        } else {
-          $('<div class="edit-error alert alert-danger mt-2"></div>').text(err).appendTo($form.find('.modal-body'));
-        }
+        $err.removeClass('d-none').text(err);
       })
       .always(function(){
         $btn.prop('disabled', false);
         $spin.addClass('d-none');
+        $label.text('Save Changes');
         hidePageSpin();
       });
   });
 
-  // Cancel order → /approved_orders/cancel/<id> (POST { reason }) with page overlay spinner
+  // Cancel order -> /approved_orders/cancel/<id> (POST { reason }) with page overlay spinner
   $(document).on('submit', '.cancel-order-form', function(e){
     e.preventDefault();
     const $form = $(this);
@@ -723,8 +870,7 @@
     })
     .done(function(){
       $('.modal.show').modal('hide');
-      if (typeof loadContent === 'function') loadContent('/approved_orders', 'Approved Orders');
-      else location.reload();
+      loadOrders(currentPage);
     })
     .fail(function(xhr){
       const err = xhr.responseJSON?.error || 'Failed to cancel order.';
@@ -739,17 +885,10 @@
     });
   });
 
-  // Disable cancel buttons for fully-settled rows (SSR + CSR)
+  // Initial load
   $(function(){
-    $('tr[data-left]').each(function(){
-      const left = parseFloat($(this).data('left') || '0');
-      if (left <= 0){
-        const $btn = $(this).find('.cancel-open-btn');
-        $btn.prop('disabled', true).attr('aria-disabled', 'true')
-            .attr('title', 'Fully settled — nothing left to cancel')
-            .attr('data-bs-toggle','tooltip').attr('data-bs-placement','top');
-      }
-    });
+    $('#filtersRow').empty();
+    loadOrders(1);
   });
 </script>
 </body>
