@@ -51,8 +51,15 @@
   .footer{ padding:14px 24px 20px; border-top:1px solid var(--line); background:#fcfdff; font-size:12px; color:var(--muted);
     display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   .print-actions{ padding:14px 0 0; display:flex; justify-content:flex-end }
+  .top-actions{ padding:14px 0 6px; display:flex; justify-content:flex-end; gap:10px; }
   .btn{ appearance:none; border:1px solid var(--line); background:#ffffff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700; box-shadow:0 2px 10px rgba(2,6,23,.08); }
   .btn:hover{ background:#f8fafc }
+  .btn-primary{ background:var(--brand); color:#fff; border-color:var(--brand); }
+  .btn-primary:hover{ background:#0a3167; }
+  .btn[disabled]{ opacity:.6; cursor:progress; }
+  .btn .spinner{ display:none; width:14px; height:14px; border:2px solid rgba(255,255,255,.5); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; margin-left:8px; }
+  .btn.is-loading .spinner{ display:inline-block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* Compact Order Details sheet (second PDF) */
   .mini-note{ margin-top:24px; background:#fff; border:1px dashed var(--line); border-radius:12px; overflow:hidden; }
@@ -99,6 +106,12 @@
 </head>
 <body>
   <div class="page">
+    <div class="top-actions">
+      <button id="downloadBtn" class="btn btn-primary" type="button">
+        Download Invoice <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+
     <!-- MAIN INVOICE (first PDF) -->
     <section class="invoice" id="invoice" aria-label="Invoice">
       <header class="inv-header">
@@ -246,7 +259,7 @@
   <!-- html2pdf.js (bundled: html2canvas + jsPDF) -->
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 
-  <!-- Auto-generate TWO PDFs on load (chained) -->
+  <!-- Manual PDF generation -->
   <script>
   (function () {
     function val(id){const el=document.getElementById(id);return el?el.textContent.trim():"";}
@@ -333,11 +346,11 @@
     }
 
     /* ---------- Run: two separate downloads, chained ---------- */
-    function run() {
+    function runDownload() {
       const mainEl = document.getElementById('invoice');
       const noteEl = document.getElementById('dispatchNote');
 
-      waitForImages(mainEl)
+      return waitForImages(mainEl)
         .then(() => saveElAsPDF(mainEl, fileMain))
         .then(() => new Promise(r => setTimeout(r, 500))) // small gap so browsers queue second download
         .then(() => waitForImages(noteEl))
@@ -345,10 +358,19 @@
         .catch(() => {/* swallow to avoid blocking page */});
     }
 
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(run, 60); // allow layout/QR logos to settle
-    } else {
-      document.addEventListener('DOMContentLoaded', () => setTimeout(run, 60));
+    const btn = document.getElementById('downloadBtn');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('is-loading')) return;
+        btn.classList.add('is-loading');
+        btn.setAttribute('disabled', 'disabled');
+        btn.firstChild.nodeValue = 'Downloading... ';
+        runDownload().finally(() => {
+          btn.classList.remove('is-loading');
+          btn.removeAttribute('disabled');
+          btn.firstChild.nodeValue = 'Download Invoice ';
+        });
+      });
     }
   })();
   </script>
