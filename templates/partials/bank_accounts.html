@@ -63,8 +63,10 @@
     {% set total_in = bal.total_in or 0.0 %}
     {% set p_out = bal.ptax_out or 0.0 %}
     {% set bdc_out = bal.bdc_out or 0.0 %}
-    {% set current = total_in - p_out - bdc_out %}
-    {% set used = (p_out + bdc_out) %}
+    {% set m_in = bal.manual_in or 0.0 %}
+    {% set m_out = bal.manual_out or 0.0 %}
+    {% set current = total_in + m_in - p_out - bdc_out - m_out %}
+    {% set used = (p_out + bdc_out + m_out) %}
     {% set util = ( (used / (total_in if total_in>0 else 1)) * 100 ) | round(0, 'floor') %}
     <div class="col-12 col-md-6 col-xl-4">
       <div class="card p-3 account-card shadow-sm">
@@ -72,7 +74,7 @@
           <div class="pe-3">
             <div class="bank-title">
               <h5 class="text-dark mb-0">{{ acc.bank_name }}</h5>
-              <span class="balance-badge {% if current < 0 %}negative{% endif %}" title="Current Balance = Total In − P-Tax Out − BDC Out">
+              <span class="balance-badge {% if current < 0 %}negative{% endif %}" title="Current Balance = Total In + Manual In – P-Tax Out – BDC Out – Manual Out">
                 <i class="bi bi-wallet2"></i>
                 {{ 'GHS {:,.2f}'.format(current) }}
               </span>
@@ -84,11 +86,17 @@
               <span class="pill pill-in" title="Confirmed cash-ins (payments) to this bank">
                 <i class="bi bi-arrow-down-circle me-1"></i> In: {{ 'GHS {:,.2f}'.format(total_in) }}
               </span>
+              <span class="pill pill-in" title="Manual deposits and transfers in">
+                <i class="bi bi-plus-circle me-1"></i> Manual In: {{ 'GHS {:,.2f}'.format(m_in) }}
+              </span>
               <span class="pill pill-out" title="P-Tax paid from this bank">
                 <i class="bi bi-receipt me-1"></i> P-Tax Out: {{ 'GHS {:,.2f}'.format(p_out) }}
               </span>
               <span class="pill pill-out" title="BDC payments made from this bank">
                 <i class="bi bi-cash-coin me-1"></i> BDC Out: {{ 'GHS {:,.2f}'.format(bdc_out) }}
+              </span>
+              <span class="pill pill-out" title="Manual withdrawals and transfers out">
+                <i class="bi bi-dash-circle me-1"></i> Manual Out: {{ 'GHS {:,.2f}'.format(m_out) }}
               </span>
             </div>
           </div>
