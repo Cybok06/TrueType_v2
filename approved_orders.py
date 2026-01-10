@@ -3,6 +3,8 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 from db import db
 from bson import ObjectId
 from datetime import datetime, date
+import math
+import re
 
 approved_orders_bp = Blueprint('approved_orders', __name__, template_folder='templates')
 
@@ -68,6 +70,35 @@ def view_approved_orders():
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
 
+    # Select lists for the edit modal
+    bdcs = list(bdc_collection.find({}, {'name': 1, 'rep_phone': 1, 'phone': 1}).sort('name', 1))
+    omcs = list(omc_collection.find({}, {'name': 1, 'rep_phone': 1}).sort('name', 1))
+    initial_q = (request.args.get('q') or '').strip()
+
+    return render_template('approved_orders.html', bdcs=bdcs, omcs=omcs, initial_q=initial_q)
+
+@approved_orders_bp.route('/approved_orders/data', methods=['GET'])
+def approved_orders_data():
+    if 'role' not in session or session['role'] != 'admin':
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        page = int(request.args.get('page', 1) or 1)
+    except ValueError:
+        page = 1
+    try:
+        page_size = int(request.args.get('page_size', 10) or 10)
+    except ValueError:
+        page_size = 10
+
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 10
+    page_size = min(page_size, 50)
+
+    q = (request.args.get('q') or '').strip()
+
     projection = {
         'date': 1, 'approved_at': 1,
         'client_id': 1, 'client_name': 1,
@@ -85,55 +116,147 @@ def view_approved_orders():
         'due_date': 1,
     }
 
+    base_filter = {'status': 'approved'}
+    query = base_filter
+
+    if q:
+        regex = {'$regex': re.escape(q), '$options': 'i'}
+        or_terms = [
+            {'order_id': regex},
+            {'vehicle_number': regex},
+            {'region': regex},
+            {'product': regex},
+            {'omc': regex},
+            {'bdc_name': regex},
+            {'depot': regex},
+            {'driver_name': regex},
+            {'driver_phone': regex},
+            {'client_name': regex},
+        ]
+
+        if ObjectId.is_valid(q):
+            or_terms.append({'_id': ObjectId(q)})
+
+        client_ids = []
+        try:
+            client_ids = [
+                c['_id'] for c in clients_collection.find(
+                    {'$or': [{'name': regex}, {'client_id': regex}]},
+                    {'_id': 1}
+                )
+            ]
+        except Exception:
+            client_ids = []
+
+        if client_ids:
+            client_id_vals = client_ids + [str(cid) for cid in client_ids]
+            or_terms.append({'client_id': {'$in': client_id_vals}})
+
+        query = {**base_filter, '$or': or_terms}
+
+    total = orders_collection.count_documents(query)
+    total_pages = max(1, int(math.ceil(total / float(page_size)))) if total else 1
+    if page > total_pages:
+        page = total_pages
+
+    skip = (page - 1) * page_size
     orders = list(
         orders_collection
-        .find({'status': 'approved'}, projection)
-        .sort('date', -1)
+        .find(query, projection)
+        .sort([('approved_at', -1), ('date', -1)])
+        .skip(skip)
+        .limit(page_size)
     )
 
-    # Select lists for the edit modal
-    bdcs = list(bdc_collection.find({}, {'name': 1, 'rep_phone': 1, 'phone': 1}).sort('name', 1))
-    omcs = list(omc_collection.find({}, {'name': 1, 'rep_phone': 1}).sort('name', 1))
-
+    # Fetch clients in one query
+    client_ids_page = []
     for order in orders:
-        # Client name/link
-        client_oid = as_objid_or_none(order.get('client_id'))
-        client = clients_collection.find_one({'_id': client_oid}) if client_oid else None
-        order['client_name'] = (client or {}).get('name', order.get('client_name', 'Unknown'))
-        order['client_mongo_id'] = str((client or {}).get('_id', ''))
+        cid = as_objid_or_none(order.get('client_id'))
+        if cid:
+            client_ids_page.append(cid)
 
-        # Numbers
-        margin   = as_float(order.get('margin'))
-        quantity = as_float(order.get('quantity'))
-        if order.get('returns') is None:
-            order['returns'] = round(margin * quantity, 2) if margin is not None else 0.0
+    client_map = {}
+    if client_ids_page:
+        for c in clients_collection.find({'_id': {'$in': list(set(client_ids_page))}}, {'name': 1}):
+            client_map[str(c['_id'])] = c.get('name', '')
 
-        order['p_tax']      = as_float(order.get('p_tax'))
-        order['s_tax']      = as_float(order.get('s_tax'))
-        order['p_bdc_omc']  = as_float(order.get('p_bdc_omc'))
-        order['s_bdc_omc']  = as_float(order.get('s_bdc_omc'))
-        order['total_debt'] = as_float(order.get('total_debt'))
-
-        # Paid / Left (from central payments)
+    # Aggregate payments in one pass
+    match_ids = []
+    for order in orders:
         oid = order.get('_id')
-        match_ids = [oid, str(oid)]
+        if oid:
+            match_ids.append(oid)
+            match_ids.append(str(oid))
+
+    paid_map = {}
+    if match_ids:
         rows = list(payments_collection.aggregate([
             {'$match': {'order_id': {'$in': match_ids}, 'status': 'confirmed'}},
-            {'$group': {'_id': None, 'total_paid': {'$sum': '$amount'}}}
+            {'$group': {'_id': '$order_id', 'total_paid': {'$sum': '$amount'}}}
         ]))
-        order['amount_paid'] = round(as_float(rows[0]['total_paid']) if rows else 0.0, 2)
-        order['amount_left'] = round(order['total_debt'] - order['amount_paid'], 2)
+        for row in rows:
+            paid_map[str(row['_id'])] = round(as_float(row.get('total_paid')), 2)
 
-        # Coerce date if needed
-        dt = order.get('date')
-        if isinstance(dt, dict) and '$date' in dt:
-            try:
-                ms = int(dt['$date'].get('$numberLong', 0))
-                order['date'] = datetime.fromtimestamp(ms / 1000.0)
-            except Exception:
-                pass
+    def _date_str(d):
+        dt = _as_dt(d)
+        return dt.strftime('%d-%b-%Y') if dt else '-'
 
-    return render_template('approved_orders.html', orders=orders, bdcs=bdcs, omcs=omcs)
+    def _dt_str(d):
+        dt = _as_dt(d)
+        return dt.strftime('%d-%b-%Y %H:%M') + " GMT" if dt else '-'
+
+    rows = []
+    for order in orders:
+        oid = order.get('_id')
+        oid_str = str(oid) if oid else ''
+
+        client_oid = as_objid_or_none(order.get('client_id'))
+        client_name = client_map.get(str(client_oid)) or order.get('client_name') or 'Unknown'
+        client_mongo_id = str(client_oid) if client_oid else ''
+
+        total_debt = as_float(order.get('total_debt'))
+        amount_paid = paid_map.get(oid_str, 0.0)
+        amount_left = round(total_debt - amount_paid, 2)
+
+        rows.append({
+            "_id": oid_str,
+            "order_id": order.get('order_id') or human_order_id(order),
+            "date": _date_str(order.get('date')),
+            "approved_at": _dt_str(order.get('approved_at')),
+            "client_name": client_name,
+            "client_mongo_id": client_mongo_id,
+            "vehicle_number": order.get('vehicle_number') or '',
+            "region": order.get('region') or '',
+            "product": order.get('product') or '',
+            "order_type": (order.get('order_type') or '-').upper(),
+            "order_type_raw": (order.get('order_type') or 'combo').replace('-', '_'),
+            "omc": order.get('omc') or '',
+            "bdc_name": order.get('bdc_name') or '',
+            "bdc_id": str(order.get('bdc_id') or ''),
+            "depot": order.get('depot') or '',
+            "quantity": as_float(order.get('quantity')),
+            "p_bdc_omc": as_float(order.get('p_bdc_omc')),
+            "s_bdc_omc": as_float(order.get('s_bdc_omc')),
+            "p_tax": as_float(order.get('p_tax')),
+            "s_tax": as_float(order.get('s_tax')),
+            "margin": as_float(order.get('margin')),
+            "returns": as_float(order.get('returns')) if order.get('returns') is not None else 0.0,
+            "total_debt": total_debt,
+            "amount_paid": amount_paid,
+            "amount_left": amount_left,
+            "shareholder": order.get('shareholder') or '',
+            "delivery_status": order.get('delivery_status') or '',
+            "due_date": _as_dt(order.get('due_date')).strftime('%Y-%m-%d') if order.get('due_date') else '',
+        })
+
+    return jsonify({
+        "success": True,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+        "rows": rows,
+    })
 
 # ----------- edit handler (also updates payment collections) -----------
 @approved_orders_bp.route('/approved_orders/update/<order_id>', methods=['POST'])
