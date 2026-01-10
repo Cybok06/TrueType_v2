@@ -38,7 +38,12 @@
      data-acc="{{ bank.account_number|e }}"
      data-account-name="{{ bank.account_name|e }}"
      data-start="{{ start_date or '' }}"
-     data-end="{{ end_date or '' }}">
+     data-end="{{ end_date or '' }}"
+     data-manual-in="{{ '%.2f'|format(manual_in_sum or 0) }}"
+     data-manual-out="{{ '%.2f'|format(manual_out_sum or 0) }}"
+     data-ptax-out-total="{{ '%.2f'|format(ptax_out_total or 0) }}"
+     data-bdc-out-total="{{ '%.2f'|format(bdc_out_total or 0) }}"
+     data-can-manage="{{ 1 if can_manage_txn else 0 }}">
 
   <!-- Top Bar -->
   <div class="d-flex align-items-center justify-content-between no-print">
@@ -50,6 +55,11 @@
       <button id="btnExportXLSX" class="btn btn-success"><i class="bi bi-filetype-xlsx me-1"></i> Export Excel</button>
       <button id="btnExportCSV" class="btn btn-primary"><i class="bi bi-filetype-csv me-1"></i> Export CSV</button>
       <button id="btnPrint" class="btn btn-outline-dark"><i class="bi bi-printer me-1"></i> Print</button>
+      {% if can_manage_txn %}
+        <button id="btnManualDeposit" class="btn btn-outline-success"><i class="bi bi-plus-circle me-1"></i> Deposit</button>
+        <button id="btnManualWithdraw" class="btn btn-outline-warning"><i class="bi bi-dash-circle me-1"></i> Withdraw</button>
+        <button id="btnManualTransfer" class="btn btn-outline-primary"><i class="bi bi-arrow-left-right me-1"></i> Transfer</button>
+      {% endif %}
     </div>
   </div>
 
@@ -125,11 +135,9 @@
   </div>
 
   <!-- Confirmed inbound payments -->
-  {% if payments %}
   <div id="exportArea" class="table-wrap shadow-sm mb-5">
     <div class="d-flex justify-content-between align-items-center p-3 pb-0">
       <h6 class="mb-2"><i class="bi bi-cash-coin me-1"></i> Confirmed Payments</h6>
-      <div class="text-muted">Rows: <strong id="rowCount">{{ payments|length }}</strong></div>
     </div>
     <div class="table-responsive">
       <table id="paymentsTable" class="table table-striped table-hover table-bordered mb-0">
@@ -142,20 +150,8 @@
             <th>Proof</th>
           </tr>
         </thead>
-        <tbody>
-          {% for pay in payments %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ pay.date.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td class="amt" data-num="{{ '%.2f'|format(pay.amount) }}">{{ '%.2f'|format(pay.amount) }}</td>
-            <td>{{ pay.account_last4 }}</td>
-            <td>
-              {% if pay.proof_url %}
-                <a href="{{ pay.proof_url }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-image"></i> View</a>
-              {% else %}<span class="text-muted">None</span>{% endif %}
-            </td>
-          </tr>
-          {% endfor %}
+        <tbody id="tbPayments">
+          <tr class="spinner-row"><td colspan="5" class="text-muted text-center"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>
         </tbody>
         <tfoot>
           <tr>
@@ -166,12 +162,11 @@
         </tfoot>
       </table>
     </div>
+    <div class="d-flex justify-content-between align-items-center p-2 border-top bg-light">
+      <small class="text-muted" id="metaPayments">Showing 0 of 0</small>
+      <button class="btn btn-sm btn-outline-primary" id="btnMorePayments" data-skip="0" style="display:none;">View more</button>
+    </div>
   </div>
-  {% else %}
-  <div class="alert alert-warning text-center shadow-sm">
-    No confirmed payments found for this account{% if start_date and end_date %} within the selected period{% endif %}.
-  </div>
-  {% endif %}
 
   <div class="table-wrap shadow-sm mb-4">
     <div class="p-3 pb-0">
@@ -191,25 +186,14 @@
             <th>Paid By</th>
           </tr>
         </thead>
-        <tbody>
-          {% if bank_tax_rows %}
-            {% for r in bank_tax_rows %}
-            <tr>
-              <td>{{ r.payment_date_str }}</td>
-              <td>{{ r.omc }}</td>
-              <td>{{ r.order_id }}</td>
-              <td class="text-end">{{ '{:,.0f}'.format(r.quantity or 0) }}</td>
-              <td class="text-end">{{ '%.2f'|format(r.s_tax_per_l or 0) }}</td>
-              <td class="text-end bank-tax-amt">{{ '%.2f'|format(r.amount) }}</td>
-              <td>{{ r.reference or '—' }}</td>
-              <td>{{ r.paid_by or '—' }}</td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-3">No P-Tax payments recorded from this bank yet.</td></tr>
-          {% endif %}
+        <tbody id="tbPTax">
+          <tr class="spinner-row"><td colspan="8" class="text-muted text-center"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>
         </tbody>
       </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center p-2 border-top bg-light">
+      <small class="text-muted" id="metaPTax">Showing 0 of 0</small>
+      <button class="btn btn-sm btn-outline-primary" id="btnMorePTax" data-skip="0" style="display:none;">View more</button>
     </div>
   </div>
 
@@ -233,28 +217,205 @@
             <th>Paid By</th>
           </tr>
         </thead>
-        <tbody>
-          {% if bank_bdc_rows %}
-            {% for r in bank_bdc_rows %}
-            <tr>
-              <td>{{ r.payment_date_str }}</td>
-              <td>{{ r.bdc or '—' }}</td>
-              <td>{{ r.ptype or '—' }}</td>
-              <td>{{ r.order_id or '—' }}</td>
-              <td class="text-end">{{ '{:,.0f}'.format(r.quantity or 0) }}</td>
-              <td class="text-end">{{ '%.2f'|format(r.s_bdc_per_l or 0) }}</td>
-              <td class="text-end bank-bdc-amt" data-num="{{ '%.2f'|format(r.amount) }}">{{ '%.2f'|format(r.amount) }}</td>
-              <td>{{ r.reference or '—' }}</td>
-              <td>{{ r.paid_by or '—' }}</td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr><td colspan="9" class="text-center text-muted py-3">No BDC payments recorded from this bank yet.</td></tr>
-          {% endif %}
+        <tbody id="tbBankBdc">
+          <tr class="spinner-row"><td colspan="9" class="text-muted text-center"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>
         </tbody>
       </table>
     </div>
+    <div class="d-flex justify-content-between align-items-center p-2 border-top bg-light">
+      <small class="text-muted" id="metaBankBdc">Showing 0 of 0</small>
+      <button class="btn btn-sm btn-outline-primary" id="btnMoreBankBdc" data-skip="0" style="display:none;">View more</button>
+    </div>
   </div>
+
+  <!-- Manual Transactions -->
+  <div class="table-wrap mt-4">
+    <div class="p-3 pb-0">
+      <h6 class="mb-2"><i class="bi bi-arrow-left-right me-1"></i> Manual Transactions</h6>
+    </div>
+    <div class="table-responsive">
+      <table id="manualTxnTable" class="table table-striped table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Reference</th>
+            <th>Narration</th>
+            <th class="text-end">In (GHS)</th>
+            <th class="text-end">Out (GHS)</th>
+            <th>Counterparty</th>
+            <th>Created By</th>
+          </tr>
+        </thead>
+        <tbody id="tbManual">
+          <tr class="spinner-row"><td colspan="8" class="text-muted text-center"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center p-2 border-top bg-light">
+      <small class="text-muted" id="metaManual">Showing 0 of 0</small>
+      <button class="btn btn-sm btn-outline-primary" id="btnMoreManual" data-skip="0" style="display:none;">View more</button>
+    </div>
+  </div>
+
+  {% if can_manage_txn %}
+  <!-- Confirm Transfer Modal -->
+  <div class="modal fade" id="confirmTransferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Confirm Transfer</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning small mb-3">
+            Please confirm this transfer. This action will affect both bank balances.
+          </div>
+
+          <dl class="row small mb-0">
+            <dt class="col-5 text-muted">From</dt><dd class="col-7" id="cfFrom"></dd>
+            <dt class="col-5 text-muted">To</dt><dd class="col-7" id="cfTo"></dd>
+            <dt class="col-5 text-muted">Amount</dt><dd class="col-7 fw-semibold" id="cfAmount"></dd>
+            <dt class="col-5 text-muted">Date</dt><dd class="col-7" id="cfDate"></dd>
+            <dt class="col-5 text-muted">Reference</dt><dd class="col-7" id="cfRef"></dd>
+            <dt class="col-5 text-muted">Narration</dt><dd class="col-7" id="cfNar"></dd>
+          </dl>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" id="btnEditTransfer">
+            Back & Edit
+          </button>
+          <button type="button" class="btn btn-primary" id="btnConfirmTransfer">
+            <span class="btn-label">Confirm Transfer</span>
+            <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Deposit Modal -->
+  <div class="modal fade" id="manualDepositModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="manualDepositForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title">Manual Deposit</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body row g-2">
+          <div class="col-6">
+            <label class="form-label">Amount (GHS)</label>
+            <input type="number" step="0.01" class="form-control" id="manualDepositAmount" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-control" id="manualDepositDate" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Reference</label>
+            <input type="text" class="form-control" id="manualDepositRef">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Narration</label>
+            <input type="text" class="form-control" id="manualDepositNarr">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Save Deposit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Manual Withdraw Modal -->
+  <div class="modal fade" id="manualWithdrawModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="manualWithdrawForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title">Manual Withdrawal</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body row g-2">
+          <div class="col-6">
+            <label class="form-label">Amount (GHS)</label>
+            <input type="number" step="0.01" class="form-control" id="manualWithdrawAmount" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-control" id="manualWithdrawDate" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Reference</label>
+            <input type="text" class="form-control" id="manualWithdrawRef">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Narration</label>
+            <input type="text" class="form-control" id="manualWithdrawNarr">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-warning" type="submit">Save Withdrawal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Transfer Modal -->
+  <div class="modal fade" id="manualTransferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="manualTransferForm" novalidate>
+        <div class="modal-header">
+          <h5 class="modal-title">Transfer Between Banks</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body row g-2">
+          <div class="col-12">
+            <label class="form-label">From Bank</label>
+            <select class="form-select" id="transferFromBank" required>
+              {% for b in bank_list %}
+                <option value="{{ b._id }}" {% if b._id == bank._id %}selected{% endif %}>
+                  {{ b.bank_name or b.account_name or 'Bank' }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">To Bank</label>
+            <select class="form-select" id="transferToBank" required>
+              {% for b in bank_list %}
+                <option value="{{ b._id }}" {% if b._id == bank._id %}disabled{% endif %}>
+                  {{ b.bank_name or b.account_name or 'Bank' }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Amount (GHS)</label>
+            <input type="number" step="0.01" class="form-control" id="transferAmount" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Date</label>
+            <input type="date" class="form-control" id="transferDate" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Reference</label>
+            <input type="text" class="form-control" id="transferRef">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Narration</label>
+            <input type="text" class="form-control" id="transferNarr">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Review Transfer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Pay OMC Modal -->
   <div class="modal fade" id="payOmcModal" tabindex="-1" aria-hidden="true">
@@ -370,6 +531,11 @@
   const root = document.getElementById('bank-root');
   const BANK_ID = (root.dataset.bankId || '').trim();
   const ACCOUNT_NAME = root.dataset.accountName || '';
+  const MANUAL_IN = parseFloat(root.dataset.manualIn || '0') || 0;
+  const MANUAL_OUT = parseFloat(root.dataset.manualOut || '0') || 0;
+  const PTAX_OUT_TOTAL = parseFloat(root.dataset.ptaxOutTotal || '0') || 0;
+  const BDC_OUT_TOTAL = parseFloat(root.dataset.bdcOutTotal || '0') || 0;
+  const CAN_MANAGE = root.dataset.canManage === '1';
   const enc = s => encodeURIComponent(String(s || ''));
 
   function getMeta(){
@@ -380,6 +546,13 @@
       start: root.dataset.start || '',
       end: root.dataset.end || ''
     };
+  }
+  function buildUrl(base, params){
+    const u = new URL(base, window.location.origin);
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, v);
+    });
+    return u.toString();
   }
 
   // ---------- Helpers ----------
@@ -409,6 +582,255 @@
   }
   const parseMoneyText = txt => { const n = parseFloat(String(txt||'').replace(/[^\d.-]/g,'')); return isNaN(n) ? 0 : n; };
   const fmt2 = n => Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+  function showToast(msg){
+    const container = document.getElementById('toastContainer') || (function(){
+      const c = document.createElement('div');
+      c.id = 'toastContainer';
+      c.className = 'position-fixed bottom-0 end-0 p-3';
+      c.style.zIndex = '2000';
+      document.body.appendChild(c);
+      return c;
+    })();
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast align-items-center text-bg-success border-0';
+    toastEl.setAttribute('role','alert');
+    toastEl.setAttribute('aria-live','assertive');
+    toastEl.setAttribute('aria-atomic','true');
+    toastEl.innerHTML = '<div class="d-flex"><div class="toast-body">' + msg +
+      '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>';
+    container.appendChild(toastEl);
+    const bsToast = new bootstrap.Toast(toastEl, {delay: 2500});
+    bsToast.show();
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+  }
+
+  async function loadSection({ baseUrl, tbody, metaEl, btnEl, renderRow, batch = 10, first = false, extraParams = {} }) {
+    const skip = parseInt(btnEl.dataset.skip || '0', 10);
+    const limit = first ? 3 : batch;
+    const url = buildUrl(baseUrl, { skip: skip, limit: limit, ...extraParams });
+
+    btnEl.disabled = true;
+    btnEl.textContent = 'Loading...';
+
+    const res = await fetch(url, { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to load');
+
+    if (first) tbody.innerHTML = '';
+
+    (data.items || []).forEach((item, idx) => {
+      tbody.insertAdjacentHTML('beforeend', renderRow(item, skip + idx + 1));
+    });
+
+    const newSkip = skip + (data.items || []).length;
+    btnEl.dataset.skip = String(newSkip);
+
+    const total = data.total || 0;
+    const shown = Math.min(newSkip, total);
+    metaEl.textContent = `Showing ${shown} of ${total}`;
+
+    if (data.has_more) {
+      btnEl.style.display = '';
+      btnEl.disabled = false;
+      btnEl.textContent = 'View more';
+    } else {
+      btnEl.style.display = 'none';
+    }
+
+    if (total === 0 && first) {
+      tbody.innerHTML = `<tr><td colspan="99" class="text-center text-muted py-3">No records found.</td></tr>`;
+      metaEl.textContent = 'Showing 0 of 0';
+      btnEl.style.display = 'none';
+    }
+  }
+
+  function renderPaymentRow(p, idx){
+    const proof = p.proof_url
+      ? `<a href="${p.proof_url}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-image"></i> View</a>`
+      : `<span class="text-muted">None</span>`;
+    return `
+      <tr>
+        <td>${idx}</td>
+        <td>${p.date_str || '—'}</td>
+        <td class="text-end">${fmt2(p.amount || 0)}</td>
+        <td>${p.account_last4 || '—'}</td>
+        <td>${proof}</td>
+      </tr>
+    `;
+  }
+  function renderPTaxRow(r){
+    return `
+      <tr>
+        <td>${r.payment_date_str || '—'}</td>
+        <td>${r.omc || '—'}</td>
+        <td>${r.order_id || '—'}</td>
+        <td class="text-end">${Number(r.quantity || 0).toLocaleString()}</td>
+        <td class="text-end">${fmt2(r.s_tax_per_l || 0)}</td>
+        <td class="text-end">${fmt2(r.amount || 0)}</td>
+        <td>${r.reference || '—'}</td>
+        <td>${r.paid_by || '—'}</td>
+      </tr>
+    `;
+  }
+  function renderBdcRow(r){
+    return `
+      <tr>
+        <td>${r.payment_date_str || '—'}</td>
+        <td>${r.bdc || '—'}</td>
+        <td>${r.ptype || '—'}</td>
+        <td>${r.order_id || '—'}</td>
+        <td class="text-end">${Number(r.quantity || 0).toLocaleString()}</td>
+        <td class="text-end">${fmt2(r.s_bdc_per_l || 0)}</td>
+        <td class="text-end">${fmt2(r.amount || 0)}</td>
+        <td>${r.reference || '—'}</td>
+        <td>${r.paid_by || '—'}</td>
+      </tr>
+    `;
+  }
+  function renderManualRow(r){
+    const t = r.type || '';
+    const typeLabel = String(t).replaceAll('_',' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `
+      <tr>
+        <td>${r.txn_date_str || '—'}</td>
+        <td>${typeLabel}</td>
+        <td>${r.reference || '-'}</td>
+        <td>${r.narration || '-'}</td>
+        <td class="text-end">${['deposit','transfer_in'].includes(t) ? fmt2(r.amount || 0) : '-'}</td>
+        <td class="text-end">${['withdrawal','transfer_out'].includes(t) ? fmt2(r.amount || 0) : '-'}</td>
+        <td>${r.counterparty || '-'}</td>
+        <td>${r.created_by || '-'}</td>
+      </tr>
+    `;
+  }
+
+  // ---------- Manual Transactions ----------
+  if (CAN_MANAGE) {
+    let transferPayload = null;
+    document.getElementById('btnManualDeposit')?.addEventListener('click', () => {
+      document.getElementById('manualDepositAmount').value = '';
+      document.getElementById('manualDepositDate').value = new Date().toISOString().slice(0,10);
+      document.getElementById('manualDepositRef').value = '';
+      document.getElementById('manualDepositNarr').value = '';
+      new bootstrap.Modal(document.getElementById('manualDepositModal')).show();
+    });
+    document.getElementById('btnManualWithdraw')?.addEventListener('click', () => {
+      document.getElementById('manualWithdrawAmount').value = '';
+      document.getElementById('manualWithdrawDate').value = new Date().toISOString().slice(0,10);
+      document.getElementById('manualWithdrawRef').value = '';
+      document.getElementById('manualWithdrawNarr').value = '';
+      new bootstrap.Modal(document.getElementById('manualWithdrawModal')).show();
+    });
+    document.getElementById('btnManualTransfer')?.addEventListener('click', () => {
+      document.getElementById('transferAmount').value = '';
+      document.getElementById('transferDate').value = new Date().toISOString().slice(0,10);
+      document.getElementById('transferRef').value = '';
+      document.getElementById('transferNarr').value = '';
+      new bootstrap.Modal(document.getElementById('manualTransferModal')).show();
+    });
+
+    document.getElementById('manualDepositForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        amount: document.getElementById('manualDepositAmount').value,
+        txn_date: document.getElementById('manualDepositDate').value,
+        reference: document.getElementById('manualDepositRef').value,
+        narration: document.getElementById('manualDepositNarr').value
+      };
+      const res = await fetch(`/bank-accounts/${enc(BANK_ID)}/manual-deposit`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) return alert(data.error || 'Failed to save deposit.');
+      location.reload();
+    });
+
+    document.getElementById('manualWithdrawForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        amount: document.getElementById('manualWithdrawAmount').value,
+        txn_date: document.getElementById('manualWithdrawDate').value,
+        reference: document.getElementById('manualWithdrawRef').value,
+        narration: document.getElementById('manualWithdrawNarr').value
+      };
+      const res = await fetch(`/bank-accounts/${enc(BANK_ID)}/manual-withdraw`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) return alert(data.error || 'Failed to save withdrawal.');
+      location.reload();
+    });
+
+    document.getElementById('manualTransferForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fromBankId = document.getElementById('transferFromBank').value;
+      const toBankId = document.getElementById('transferToBank').value;
+      const amountVal = document.getElementById('transferAmount').value;
+      const txnDate = document.getElementById('transferDate').value;
+      const reference = document.getElementById('transferRef').value;
+      const narration = document.getElementById('transferNarr').value;
+
+      if (!fromBankId || !toBankId) return alert('Select both banks.');
+      if (fromBankId === toBankId) return alert('From and To bank must be different.');
+      const amount = parseFloat(amountVal || '0');
+      if (!(amount > 0)) return alert('Amount must be greater than 0.');
+      if (!txnDate) return alert('Date is required.');
+
+      const fromName = document.getElementById('transferFromBank').selectedOptions[0]?.textContent.trim() || '';
+      const toName = document.getElementById('transferToBank').selectedOptions[0]?.textContent.trim() || '';
+
+      transferPayload = {
+        from_bank_id: fromBankId,
+        to_bank_id: toBankId,
+        amount: amount,
+        txn_date: txnDate,
+        reference: reference,
+        narration: narration
+      };
+
+      document.getElementById('cfFrom').textContent = fromName || '-';
+      document.getElementById('cfTo').textContent = toName || '-';
+      document.getElementById('cfAmount').textContent = 'GHS ' + amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+      document.getElementById('cfDate').textContent = txnDate;
+      document.getElementById('cfRef').textContent = reference ? reference : '(Auto-generated)';
+      document.getElementById('cfNar').textContent = narration ? narration : '-';
+
+      bootstrap.Modal.getInstance(document.getElementById('manualTransferModal')).hide();
+      new bootstrap.Modal(document.getElementById('confirmTransferModal')).show();
+    });
+
+    document.getElementById('btnEditTransfer')?.addEventListener('click', () => {
+      bootstrap.Modal.getInstance(document.getElementById('confirmTransferModal')).hide();
+      new bootstrap.Modal(document.getElementById('manualTransferModal')).show();
+    });
+
+    document.getElementById('btnConfirmTransfer')?.addEventListener('click', async () => {
+      if (!transferPayload) return;
+      const btn = document.getElementById('btnConfirmTransfer');
+      const spinner = btn.querySelector('.spinner-border');
+      const label = btn.querySelector('.btn-label');
+      btn.disabled = true;
+      spinner.classList.remove('d-none');
+      label.textContent = 'Processing...';
+
+      try {
+        const res = await fetch('/bank-accounts/transfer', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(transferPayload)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create transfer.');
+        bootstrap.Modal.getInstance(document.getElementById('confirmTransferModal')).hide();
+        showToast('Transfer completed successfully.');
+        setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        alert(err.message || 'Failed to create transfer.');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        label.textContent = 'Confirm Transfer';
+      }
+    });
+  }
 
   // ---------- Load OMC debts ----------
   const omcBody = document.querySelector('#omcDebtTable tbody');
@@ -568,24 +990,53 @@
   });
 
   // ---------- Current Balance ----------
-  function sumCells(sel){ let t=0; document.querySelectorAll(sel).forEach(td=> t+=parseMoneyText(td.textContent)); return t; }
   function updateCurrentBalance(){
     const totalReceived = parseMoneyText(document.getElementById('summaryTotal')?.dataset.val || '0');
-    const sTaxPaid = sumCells('#bankTaxTable tbody td.bank-tax-amt');
-    const bdcPaid  = sumCells('#bankBdcTable tbody td.bank-bdc-amt');
-    const bal = totalReceived - sTaxPaid - bdcPaid;
+    const bal = totalReceived + MANUAL_IN - (PTAX_OUT_TOTAL + BDC_OUT_TOTAL + MANUAL_OUT);
     const el = document.getElementById('currentBalance');
     if (el){
       el.textContent = `Current Balance: GHS ${fmt2(bal)}`;
       el.classList.toggle('negative', bal < 0);
-      el.title = `Total In: GHS ${fmt2(totalReceived)}  |  P-Tax Out: GHS ${fmt2(sTaxPaid)}  |  BDC Out: GHS ${fmt2(bdcPaid)}`;
+      el.title = `Total In: GHS ${fmt2(totalReceived)}  |  Manual In: GHS ${fmt2(MANUAL_IN)}  |  P-Tax Out: GHS ${fmt2(PTAX_OUT_TOTAL)}  |  BDC Out: GHS ${fmt2(BDC_OUT_TOTAL)}  |  Manual Out: GHS ${fmt2(MANUAL_OUT)}`;
     }
   }
 
   // ---------- Exports ----------
+  async function fetchAllPayments(){
+    const { start, end } = getMeta();
+    const items = [];
+    let skip = 0;
+    const limit = 500;
+    while (true){
+      const url = buildUrl(`/bank-profile/${enc(BANK_ID)}/history/payments`, {
+        skip: skip,
+        limit: limit,
+        start_date: start,
+        end_date: end
+      });
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to load payments.');
+      const batch = data.items || [];
+      items.push(...batch);
+      if (!data.has_more) break;
+      skip += batch.length;
+      if (batch.length === 0) break;
+    }
+    return items;
+  }
+
   async function exportPDF(){
     const { bank, branch, acc, start, end } = getMeta();
-    const { headers, rows } = tableToArray('paymentsTable');
+    const items = await fetchAllPayments();
+    const headers = ['#', 'Date', 'Amount (GHS)', 'Last 4 Digits', 'Proof'];
+    const rows = items.map((p, i) => ([
+      i + 1,
+      p.date_str || '—',
+      fmt2(p.amount || 0),
+      p.account_last4 || '—',
+      p.proof_url || 'None'
+    ]));
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true, hotfixes: ["px_scaling"] });
     const title = `${bank} – ${branch}`, subtitle = `Account: ${acc}`, period = (start||end) ? `Period: ${start || '—'} → ${end || '—'}` : '';
@@ -615,26 +1066,42 @@
     const fname = sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.pdf`);
     doc.save(fname);
   }
-  function exportXLSX(){
+  async function exportXLSX(){
     const { bank, branch, start, end } = getMeta();
-    const { headers, rows } = tableToArray('paymentsTable');
+    const items = await fetchAllPayments();
+    const headers = ['#', 'Date', 'Amount (GHS)', 'Last 4 Digits', 'Proof'];
+    const rows = items.map((p, i) => ([
+      i + 1,
+      p.date_str || '—',
+      fmt2(p.amount || 0),
+      p.account_last4 || '—',
+      p.proof_url || 'None'
+    ]));
     const wsData = [headers, ...rows];
     const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(wsData);
     const colWidths = wsData[0].map((h,i)=> ({ wch: Math.min(Math.max(8, Math.max(...wsData.map(r=>(''+(r[i]||'')).length))+2), 40) }));
     ws['!cols'] = colWidths; XLSX.utils.book_append_sheet(wb, ws, 'Payments');
     XLSX.writeFile(wb, sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.xlsx`));
   }
-  function exportCSV(){
+  async function exportCSV(){
     const { bank, branch, start, end } = getMeta();
-    const { headers, rows } = tableToArray('paymentsTable');
+    const items = await fetchAllPayments();
+    const headers = ['#', 'Date', 'Amount (GHS)', 'Last 4 Digits', 'Proof'];
+    const rows = items.map((p, i) => ([
+      i + 1,
+      p.date_str || '—',
+      fmt2(p.amount || 0),
+      p.account_last4 || '—',
+      p.proof_url || 'None'
+    ]));
     saveBlob(toCSV(headers, rows), 'text/csv;charset=utf-8;', sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.csv`));
   }
 
   // ---------- Init ----------
-  (function init(){
-    document.getElementById('btnExportPDF')?.addEventListener('click', exportPDF);
-    document.getElementById('btnExportXLSX')?.addEventListener('click', exportXLSX);
-    document.getElementById('btnExportCSV')?.addEventListener('click', exportCSV);
+  (async function init(){
+    document.getElementById('btnExportPDF')?.addEventListener('click', () => exportPDF());
+    document.getElementById('btnExportXLSX')?.addEventListener('click', () => exportXLSX());
+    document.getElementById('btnExportCSV')?.addEventListener('click', () => exportCSV());
     document.getElementById('btnPrint')?.addEventListener('click', ()=>window.print());
 
     const summary = document.getElementById('summaryTotal');
@@ -642,21 +1109,123 @@
       const raw = parseFloat((summary.dataset.val||'0').replace(/,/g,''))||0;
       summary.textContent = 'Total Received: GHS ' + fmt2(raw);
     }
-    document.querySelectorAll('#paymentsTable tbody td.amt').forEach(td=>{
-      const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,'')); if(!isNaN(raw)) td.textContent = fmt2(raw);
-    });
-    const t = document.getElementById('tableTotal'); if(t){ const val = parseFloat((t.getAttribute('data-total')||'0').replace(/,/g,'')); if(!isNaN(val)) t.textContent = 'GHS ' + fmt2(val); }
+    const t = document.getElementById('tableTotal');
+    if (t){
+      const val = parseFloat((t.getAttribute('data-total')||'0').replace(/,/g,'')); 
+      if(!isNaN(val)) t.textContent = 'GHS ' + fmt2(val);
+    }
+
+    const { start, end } = getMeta();
+    const tbPayments = document.getElementById('tbPayments');
+    const tbPTax = document.getElementById('tbPTax');
+    const tbBankBdc = document.getElementById('tbBankBdc');
+    const tbManual = document.getElementById('tbManual');
+    const metaPayments = document.getElementById('metaPayments');
+    const metaPTax = document.getElementById('metaPTax');
+    const metaBankBdc = document.getElementById('metaBankBdc');
+    const metaManual = document.getElementById('metaManual');
+    const btnMorePayments = document.getElementById('btnMorePayments');
+    const btnMorePTax = document.getElementById('btnMorePTax');
+    const btnMoreBankBdc = document.getElementById('btnMoreBankBdc');
+    const btnMoreManual = document.getElementById('btnMoreManual');
+
+    const paymentsBase = `/bank-profile/${enc(BANK_ID)}/history/payments`;
+    const ptaxBase = `/bank-profile/${enc(BANK_ID)}/history/ptax`;
+    const bdcBase = `/bank-profile/${enc(BANK_ID)}/history/bdc`;
+    const manualBase = `/bank-profile/${enc(BANK_ID)}/history/manual`;
+
+    try {
+      await loadSection({
+        baseUrl: paymentsBase,
+        tbody: tbPayments,
+        metaEl: metaPayments,
+        btnEl: btnMorePayments,
+        renderRow: renderPaymentRow,
+        first: true,
+        extraParams: { start_date: start, end_date: end }
+      });
+      btnMorePayments?.addEventListener('click', () => loadSection({
+        baseUrl: paymentsBase,
+        tbody: tbPayments,
+        metaEl: metaPayments,
+        btnEl: btnMorePayments,
+        renderRow: renderPaymentRow,
+        batch: 10,
+        extraParams: { start_date: start, end_date: end }
+      }));
+    } catch (e) {
+      tbPayments.innerHTML = `<tr><td colspan="5" class="text-danger text-center">${e.message}</td></tr>`;
+    }
+
+    try {
+      await loadSection({
+        baseUrl: ptaxBase,
+        tbody: tbPTax,
+        metaEl: metaPTax,
+        btnEl: btnMorePTax,
+        renderRow: renderPTaxRow,
+        first: true
+      });
+      btnMorePTax?.addEventListener('click', () => loadSection({
+        baseUrl: ptaxBase,
+        tbody: tbPTax,
+        metaEl: metaPTax,
+        btnEl: btnMorePTax,
+        renderRow: renderPTaxRow,
+        batch: 10
+      }));
+    } catch (e) {
+      tbPTax.innerHTML = `<tr><td colspan="8" class="text-danger text-center">${e.message}</td></tr>`;
+    }
+
+    try {
+      await loadSection({
+        baseUrl: bdcBase,
+        tbody: tbBankBdc,
+        metaEl: metaBankBdc,
+        btnEl: btnMoreBankBdc,
+        renderRow: renderBdcRow,
+        first: true
+      });
+      btnMoreBankBdc?.addEventListener('click', () => loadSection({
+        baseUrl: bdcBase,
+        tbody: tbBankBdc,
+        metaEl: metaBankBdc,
+        btnEl: btnMoreBankBdc,
+        renderRow: renderBdcRow,
+        batch: 10
+      }));
+    } catch (e) {
+      tbBankBdc.innerHTML = `<tr><td colspan="9" class="text-danger text-center">${e.message}</td></tr>`;
+    }
+
+    try {
+      await loadSection({
+        baseUrl: manualBase,
+        tbody: tbManual,
+        metaEl: metaManual,
+        btnEl: btnMoreManual,
+        renderRow: renderManualRow,
+        first: true,
+        extraParams: { start_date: start, end_date: end }
+      });
+      btnMoreManual?.addEventListener('click', () => loadSection({
+        baseUrl: manualBase,
+        tbody: tbManual,
+        metaEl: metaManual,
+        btnEl: btnMoreManual,
+        renderRow: renderManualRow,
+        batch: 10,
+        extraParams: { start_date: start, end_date: end }
+      }));
+    } catch (e) {
+      tbManual.innerHTML = `<tr><td colspan="8" class="text-danger text-center">${e.message}</td></tr>`;
+    }
 
     loadOmcDebts();
     loadBdcDebts();
     updateCurrentBalance();
   })();
-
-  // Format BDC payment history numbers
-  document.querySelectorAll('#bankBdcTable tbody td.bank-bdc-amt').forEach(td=>{
-    const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,''));
-    if(!isNaN(raw)) td.textContent = fmt2(raw);
-  });
 </script>
 </body>
 </html>
