@@ -6,13 +6,13 @@ from flask import (
     redirect, url_for, flash, abort, jsonify, session
 )
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from werkzeug.utils import secure_filename
 import traceback
 import requests
 
-from db import db
+from db import db, users_collection
 
 payment_vouchers_col = db["payment_vouchers"]
 images_col = db["images"]  # traceability logs (same pattern as your other module)
@@ -47,6 +47,7 @@ def _ensure_indexes() -> None:
         payment_vouchers_col.create_index([("to_name", 1)])
         payment_vouchers_col.create_index([("pv_number", 1)], unique=True)  # prevent duplicates
         payment_vouchers_col.create_index([("approval_status", 1)])
+        payment_vouchers_col.create_index([("is_deleted", 1), ("deleted_at", -1)])
         images_col.create_index([("created_at", -1)])
     except Exception:
         # ignore if no permissions / already exists
@@ -62,6 +63,48 @@ def _to_decimal(val, default: str = "0") -> Decimal:
         return Decimal(str(val or default))
     except (InvalidOperation, TypeError):
         return Decimal(default)
+
+def _load_current_user():
+    username = session.get("username")
+    if not username:
+        return None
+    user = users_collection.find_one(
+        {"username": username},
+        {"username": 1, "role": 1, "access": 1, "perms": 1, "full_name": 1, "name": 1}
+    )
+    return user
+
+def _allowed_slugs_for(user):
+    if not user:
+        return set(), False
+    is_super = (user.get("username") == "admin") or (user.get("role") == "superadmin")
+    allowed = set()
+    access = user.get("access")
+    if isinstance(access, dict):
+        allowed = {k for k, v in access.items() if v}
+    else:
+        perms = user.get("perms") or []
+        allowed = set(perms)
+    return allowed, bool(is_super)
+
+def _can_delete_voucher(user) -> bool:
+    if not user:
+        return False
+    allowed, is_super = _allowed_slugs_for(user)
+    role = (user.get("role") or "").lower()
+    is_admin = role in ("admin", "superadmin")
+    return is_super or is_admin or ("payment_vouchers:delete" in allowed)
+
+def _can_view_deleted(user) -> bool:
+    if not user:
+        return False
+    allowed, is_super = _allowed_slugs_for(user)
+    role = (user.get("role") or "").lower()
+    is_admin = role in ("admin", "superadmin")
+    return is_super or is_admin or ("payment_vouchers:view_deleted" in allowed)
+
+def _created_dt(voucher):
+    return voucher.get("created_at") or voucher.get("date")
 
 
 # ============================================================
@@ -188,7 +231,7 @@ def form_page():
     today = datetime.today().strftime("%Y-%m-%d")
 
     recent = list(
-        payment_vouchers_col.find({})
+        payment_vouchers_col.find({"is_deleted": {"$ne": True}})
         .sort("created_at", -1)
         .limit(25)
     )
@@ -299,6 +342,14 @@ def create_voucher():
         "approval_status": "pending",
         "approved_at": None,
         "approved_by_user": None,
+        "is_deleted": False,
+        "deleted_at": None,
+        "deleted_by_id": None,
+        "deleted_by_name": None,
+        "delete_reason": None,
+        "restored_at": None,
+        "restored_by_id": None,
+        "restored_by_name": None,
     }
 
     # Retry loop in case of rare pv_number collision (unique index)
@@ -328,7 +379,25 @@ def view_voucher(voucher_id: str):
     if not voucher:
         abort(404)
 
-    return render_template("payment_voucher_view.html", v=voucher)
+    user = _load_current_user()
+    can_delete = _can_delete_voucher(user)
+    created_dt = _created_dt(voucher)
+    delete_blocked = True
+    delete_block_msg = "Deletion window expired (must delete within 7 days of creation)."
+    if created_dt:
+        delete_blocked = datetime.utcnow() > (created_dt + timedelta(days=7))
+    else:
+        delete_blocked = True
+        delete_block_msg = "Missing created date, cannot validate deletion window"
+
+    return render_template(
+        "payment_voucher_view.html",
+        v=voucher,
+        can_delete=can_delete,
+        delete_blocked=delete_blocked,
+        delete_block_msg=delete_block_msg,
+        now=datetime.utcnow(),
+    )
 
 
 def _format_date(dt):
@@ -345,7 +414,7 @@ def pending_vouchers():
     """Return vouchers pending approval."""
     rows = list(
         payment_vouchers_col.find(
-            {"approval_status": {"$in": [None, "pending"]}}
+            {"approval_status": {"$in": [None, "pending"]}, "is_deleted": {"$ne": True}}
         ).sort("created_at", -1).limit(100)
     )
     payload = []
@@ -387,3 +456,115 @@ def approve_voucher(voucher_id: str):
         "approval_status": "approved",
         "approved_by_user": username,
     })
+
+
+@payment_voucher_bp.post("/<voucher_id>/delete")
+def delete_voucher(voucher_id: str):
+    user = _load_current_user()
+    if not _can_delete_voucher(user):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    try:
+        oid = ObjectId(voucher_id)
+    except Exception:
+        abort(404)
+
+    voucher = payment_vouchers_col.find_one({"_id": oid})
+    if not voucher:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    if voucher.get("is_deleted"):
+        return jsonify({"ok": False, "error": "Already deleted"}), 400
+
+    created_dt = _created_dt(voucher)
+    if not created_dt:
+        return jsonify({"ok": False, "error": "Missing created date, cannot validate deletion window"}), 400
+    if datetime.utcnow() > (created_dt + timedelta(days=7)):
+        return jsonify({"ok": False, "error": "Deletion window expired (must delete within 7 days of creation)"}), 400
+
+    reason = ""
+    if request.is_json:
+        reason = (request.json.get("reason") or "").strip()
+    else:
+        reason = (request.form.get("reason") or "").strip()
+    if not reason or len(reason) < 5:
+        return jsonify({"ok": False, "error": "Reason required (min 5 chars)"}), 400
+
+    deleted_by_name = user.get("full_name") or user.get("name") or user.get("username") if user else ""
+    update = {
+        "is_deleted": True,
+        "deleted_at": datetime.utcnow(),
+        "deleted_by_id": user.get("_id") if user else None,
+        "deleted_by_name": deleted_by_name,
+        "delete_reason": reason,
+    }
+    payment_vouchers_col.update_one({"_id": oid}, {"$set": update})
+    return jsonify({"ok": True})
+
+
+@payment_voucher_bp.post("/<voucher_id>/restore")
+def restore_voucher(voucher_id: str):
+    user = _load_current_user()
+    if not _can_delete_voucher(user):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    try:
+        oid = ObjectId(voucher_id)
+    except Exception:
+        abort(404)
+
+    voucher = payment_vouchers_col.find_one({"_id": oid})
+    if not voucher:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    if not voucher.get("is_deleted"):
+        return jsonify({"ok": False, "error": "Not deleted"}), 400
+
+    restored_by_name = user.get("full_name") or user.get("name") or user.get("username") if user else ""
+    update = {
+        "is_deleted": False,
+        "restored_at": datetime.utcnow(),
+        "restored_by_id": user.get("_id") if user else None,
+        "restored_by_name": restored_by_name,
+    }
+    payment_vouchers_col.update_one({"_id": oid}, {"$set": update})
+    return jsonify({"ok": True})
+
+
+@payment_voucher_bp.get("/recently-deleted")
+def recently_deleted():
+    user = _load_current_user()
+    if not _can_delete_voucher(user):
+        abort(403)
+
+    rows = list(
+        payment_vouchers_col.find({"is_deleted": True})
+        .sort("deleted_at", -1)
+        .limit(200)
+    )
+    return render_template("payment_voucher_deleted.html", vouchers=rows)
+
+
+@payment_voucher_bp.get("/deleted")
+def deleted_vouchers():
+    user = _load_current_user()
+    if not _can_view_deleted(user):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    rows = list(
+        payment_vouchers_col.find({"is_deleted": True})
+        .sort("deleted_at", -1)
+        .limit(200)
+    )
+    payload = []
+    for v in rows:
+        payload.append({
+            "id": str(v.get("_id")),
+            "pv_number": v.get("pv_number") or "",
+            "date": _format_date(v.get("date") or v.get("created_at")),
+            "to_name": v.get("to_name") or "",
+            "total_payable": float(v.get("total_payable") or 0),
+            "approval_status": v.get("approval_status") or "pending",
+            "deleted_at": _format_date(v.get("deleted_at")),
+            "deleted_by": v.get("deleted_by_name") or "",
+            "delete_reason": v.get("delete_reason") or "",
+        })
+    return jsonify({"ok": True, "vouchers": payload})
