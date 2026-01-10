@@ -9,6 +9,8 @@ home_bp = Blueprint('home', __name__, template_folder='templates')
 orders_collection    = db['orders']
 clients_collection   = db['clients']
 payments_collection  = db['payments']        # inbound receipts (confirmed)
+truck_payments_collection = db["truck_payments"]
+payment_vouchers_collection = db["payment_vouchers"]
 
 # Extra collections (for KPIs; safe to reference even if currently empty)
 tax_collection       = db['tax_records']     # P-Tax outflows
@@ -175,45 +177,142 @@ def dashboard_home():
         flash("Access denied.", "danger")
         return redirect(url_for('login.login'))
 
+    return render_template(
+        'partials/home.html',
+        total_clients=0,
+        total_orders=0,
+        total_approved_orders=0,
+        approval_rate=0,
+        total_returns=0,
+        kpi_bank_balance=0,
+        kpi_omc_debt=0,
+        kpi_bdc_debt=0,
+        kpi_debtors=0,
+        orders_today=0,
+        orders_yesterday=0
+    )
+
+@home_bp.route('/dashboard/metrics')
+def dashboard_metrics():
+    if 'role' not in session or session['role'] != 'admin':
+        return jsonify({"ok": False, "error": "Unauthorized"}), 403
+
+    # Admin dashboard counts
+    unapproved_orders_count = orders_collection.count_documents({"status": "pending"})
+    unconfirmed_payments_count = payments_collection.count_documents({"status": "pending"})
+    unconfirmed_truck_payments_count = truck_payments_collection.count_documents({"status": "pending"})
+    pending_payment_vouchers_count = payment_vouchers_collection.count_documents(
+        {"approval_status": {"$in": [None, "pending"]}, "is_deleted": {"$ne": True}}
+    )
+
+    pipeline = [
+        {"$group": {"_id": "$client_id", "total_debt": {"$sum": "$total_debt"}, "total_paid": {"$sum": "$paid"}}},
+        {"$project": {"amount_left": {"$subtract": ["$total_debt", "$total_paid"]}}},
+        {"$match": {"amount_left": {"$gt": 0}}},
+        {"$count": "truck_debtors_count"}
+    ]
+    agg_result = list(db["orders"].aggregate(pipeline))
+    truck_debtors_count = agg_result[0]["truck_debtors_count"] if agg_result else 0
+
+    omc_pipe = [
+        {"$match": {"$or": [
+            {"order_type": "s_tax"}, {"order_type": "combo"},
+            {"s_tax": {"$gt": 0}}, {"s-tax": {"$gt": 0}}
+        ]}},
+        {"$addFields": {
+            "rate_raw": {"$ifNull": ["$s_tax", {"$ifNull": ["$s-tax", 0]}]},
+            "qty_raw": {"$ifNull": ["$quantity", 0]}
+        }},
+        {"$addFields": {"rate": {"$toDouble": "$rate_raw"}, "qty": {"$toDouble": "$qty_raw"}}},
+        {"$addFields": {"due": {"$round": [{"$multiply": ["$rate", "$qty"]}, 2]}}},
+        {"$lookup": {
+            "from": "tax_records",
+            "let": {"oid": "$_id"},
+            "pipeline": [
+                {"$match": {"$expr": {"$and": [
+                    {"$eq": ["$order_oid", "$$oid"]},
+                    {"$regexMatch": {"input": "$type", "regex": r"^s[\s_-]*tax$", "options": "i"}}
+                ]}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ],
+            "as": "tax"
+        }},
+        {"$addFields": {"paid": {"$ifNull": [{"$arrayElemAt": ["$tax.total", 0]}, 0]}}},
+        {"$addFields": {"remain": {"$round": [{"$subtract": ["$due", {"$toDouble": "$paid"}]}, 2]}}},
+        {"$match": {"remain": {"$gt": 0}}},
+        {"$group": {"_id": "$omc", "outstanding": {"$sum": "$remain"}}},
+        {"$project": {"_id": 0, "outstanding": {"$round": ["$outstanding", 2]}}},
+        {"$sort": {"outstanding": -1}}
+    ]
+    omc_rows = list(orders_collection.aggregate(omc_pipe))
+    omc_debtors_count = len(omc_rows)
+    omc_outstanding_total = float(sum((row.get("outstanding") or 0) for row in omc_rows))
+
+    bdc_pipe = [
+        {"$match": {"payment_type": {"$regex": r"^(credit|from\s*account)$", "$options": "i"}}},
+        {"$lookup": {"from": "orders", "localField": "order_id", "foreignField": "_id", "as": "ord"}},
+        {"$addFields": {
+            "bdc_id_eff": {"$ifNull": ["$bdc_id", {"$arrayElemAt": ["$ord.bdc_id", 0]}]},
+            "amount_d": {"$toDouble": "$amount"},
+            "paid_d": {"$toDouble": {"$ifNull": ["$bank_paid_total", 0]}}
+        }},
+        {"$addFields": {"remain": {"$subtract": ["$amount_d", "$paid_d"]}}},
+        {"$match": {"bdc_id_eff": {"$ne": None}, "remain": {"$gt": 0}}},
+        {"$group": {"_id": "$bdc_id_eff", "outstanding": {"$sum": "$remain"}}},
+        {"$project": {"_id": 0, "outstanding": {"$round": ["$outstanding", 2]}}},
+        {"$sort": {"outstanding": -1}}
+    ]
+    bdc_rows = list(sbdc_collection.aggregate(bdc_pipe))
+    bdc_debtors_count = len(bdc_rows)
+    bdc_outstanding_total = float(sum((row.get("outstanding") or 0) for row in bdc_rows))
+
+    # Home KPI metrics
     total_clients = clients_collection.estimated_document_count()
     total_orders = orders_collection.estimated_document_count()
     total_approved_orders = orders_collection.count_documents(
         {'status': {'$regex': '^approved$', '$options': 'i'}}
     )
     approval_rate = round((total_approved_orders / total_orders) * 100, 1) if total_orders else 0
-
-    # Core total
     total_returns = _sum_returns_total()
-
-    # NEW KPI cards
     kpi_bank_balance = _sum_total_bank_balance()
-    kpi_omc_debt     = _sum_total_omc_debt()
-    kpi_bdc_debt     = _sum_total_bdc_debt()
-    kpi_debtors      = _sum_total_debtors_amount()
+    kpi_omc_debt = _sum_total_omc_debt()
+    kpi_bdc_debt = _sum_total_bdc_debt()
+    kpi_debtors = _sum_total_debtors_amount()
 
-    # Orders today / yesterday (kept)
     today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today - timedelta(days=1)
     orders_today = orders_collection.count_documents({"date": {"$gte": today}})
     orders_yesterday = orders_collection.count_documents({"date": {"$gte": yesterday, "$lt": today}})
 
-    return render_template(
-        'partials/home.html',
-        total_clients=total_clients,
-        total_orders=total_orders,
-        total_approved_orders=total_approved_orders,
-        approval_rate=approval_rate,
-        total_returns=total_returns,
+    counts = {
+        "unapproved_orders_count": unapproved_orders_count,
+        "unconfirmed_payments_count": unconfirmed_payments_count,
+        "unconfirmed_truck_payments_count": unconfirmed_truck_payments_count,
+        "pending_payment_vouchers_count": pending_payment_vouchers_count,
+        "truck_debtors_count": truck_debtors_count,
+        "omc_debtors_count": omc_debtors_count,
+        "omc_outstanding_total": omc_outstanding_total,
+        "bdc_debtors_count": bdc_debtors_count,
+        "bdc_outstanding_total": bdc_outstanding_total,
 
-        # expose KPIs to template (no JS needed)
-        kpi_bank_balance=kpi_bank_balance,
-        kpi_omc_debt=kpi_omc_debt,
-        kpi_bdc_debt=kpi_bdc_debt,
-        kpi_debtors=kpi_debtors,
+        "total_clients": total_clients,
+        "total_orders": total_orders,
+        "total_approved_orders": total_approved_orders,
+        "approval_rate": approval_rate,
+        "total_returns": total_returns,
+        "kpi_bank_balance": kpi_bank_balance,
+        "kpi_omc_debt": kpi_omc_debt,
+        "kpi_bdc_debt": kpi_bdc_debt,
+        "kpi_debtors": kpi_debtors,
+        "orders_today": orders_today,
+        "orders_yesterday": orders_yesterday
+    }
 
-        orders_today=orders_today,
-        orders_yesterday=orders_yesterday
-    )
+    return jsonify({
+        "ok": True,
+        "counts": counts,
+        "generated_at": datetime.utcnow().isoformat()
+    })
 
 @home_bp.route('/home/details')
 def dashboard_details():
