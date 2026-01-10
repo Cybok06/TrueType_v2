@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, session
 from db import db
 from bson import ObjectId
 from datetime import datetime
@@ -11,6 +11,7 @@ orders_col   = db["orders"]            # for price/tax/qty + legacy bdc_id
 tax_col      = db["tax_records"]       # P-Tax payments (outflows)
 bdc_col      = db["bdc"]               # BDC master
 sbdc_col     = db["s_bdc_payment"]     # central S-BDC payments (from orders/manual)
+bank_txn_col = db["bank_transactions"] # manual deposits/withdrawals/transfers
 
 # ---------------- helpers ----------------
 def _f(v, default=0.0):
@@ -96,6 +97,10 @@ def _find_order_from_tax_doc(doc):
 
     return ord_doc or {}
 
+def _can_manage_bank_txn() -> bool:
+    role = (session.get("role") or "").lower()
+    return role in ("admin", "superadmin", "accounting") or session.get("username") == "admin"
+
 # ---------------- page ----------------
 @bank_profile_bp.route("/bank-profile/<bank_id>")
 def bank_profile(bank_id):
@@ -119,25 +124,176 @@ def bank_profile(bank_id):
         except ValueError:
             pass
 
-    payments = list(payments_col.find(query).sort("date", -1))
-    total_received = sum(_f(p.get("amount")) for p in payments)
+    total_received = 0.0
+    try:
+        row = next(
+            payments_col.aggregate([
+                {"$match": query},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+            ]),
+            None
+        )
+        total_received = _f(row.get("total")) if row else 0.0
+    except Exception:
+        total_received = 0.0
 
-    # ---------- P-Tax history paid from this bank (JOIN orders for qty & s_tax) ----------
-    bank_tax_rows = []
-    tax_pipe = [
-        {"$match": {"source_bank_id": ObjectId(bank_id), "type": {"$regex": r"^p[\s_-]*tax$", "$options": "i"}}},
+    # ---------- P-Tax total paid from this bank ----------
+    ptax_out_total = 0.0
+    try:
+        row = next(
+            tax_col.aggregate([
+                {"$match": {"source_bank_id": ObjectId(bank_id), "type": {"$regex": r"^p[\s_-]*tax$", "$options": "i"}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+            ]),
+            None
+        )
+        ptax_out_total = _f(row.get("total")) if row else 0.0
+    except Exception:
+        ptax_out_total = 0.0
+
+    # ---------- BDC total paid from this bank ----------
+    bdc_out_total = 0.0
+    try:
+        row = next(
+            sbdc_col.aggregate([
+                {"$match": {"bank_paid_history": {"$exists": True, "$ne": []}}},
+                {"$unwind": "$bank_paid_history"},
+                {"$match": {"bank_paid_history.bank_id": ObjectId(bank_id)}},
+                {"$group": {"_id": None, "total": {"$sum": "$bank_paid_history.amount"}}},
+            ]),
+            None
+        )
+        bdc_out_total = _f(row.get("total")) if row else 0.0
+    except Exception:
+        bdc_out_total = 0.0
+
+    # ---------- Manual transactions ----------
+    manual_query = {"bank_id": ObjectId(bank_id)}
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, "%Y-%m-%d")
+            end_date   = datetime.strptime(end_str, "%Y-%m-%d")
+            manual_query["txn_date"] = {"$gte": start_date, "$lte": end_date}
+        except ValueError:
+            pass
+
+    manual_in_sum = 0.0
+    manual_out_sum = 0.0
+    try:
+        row = next(
+            bank_txn_col.aggregate([
+                {"$match": {**manual_query, "type": {"$in": ["deposit", "transfer_in"]}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+            ]),
+            None
+        )
+        manual_in_sum = _f(row.get("total")) if row else 0.0
+    except Exception:
+        manual_in_sum = 0.0
+    try:
+        row = next(
+            bank_txn_col.aggregate([
+                {"$match": {**manual_query, "type": {"$in": ["withdrawal", "transfer_out"]}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+            ]),
+            None
+        )
+        manual_out_sum = _f(row.get("total")) if row else 0.0
+    except Exception:
+        manual_out_sum = 0.0
+
+    return render_template(
+        "partials/bank_profile.html",
+        bank=bank,
+        bank_id_str=bank_id_str,
+        total_received=total_received,
+        start_date=start_str,
+        end_date=end_str,
+        manual_in_sum=manual_in_sum,
+        manual_out_sum=manual_out_sum,
+        ptax_out_total=ptax_out_total,
+        bdc_out_total=bdc_out_total,
+        can_manage_txn=_can_manage_bank_txn(),
+        bank_list=list(accounts_col.find({}, {"bank_name": 1, "account_name": 1, "currency": 1})),
+    )
+
+# ---------------- API: confirmed payments history ----------------
+@bank_profile_bp.route("/bank-profile/<bank_id>/history/payments", methods=["GET"])
+def history_payments(bank_id):
+    if not ObjectId.is_valid(bank_id):
+        return jsonify({"ok": False, "error": "Invalid bank id"}), 400
+    bank = accounts_col.find_one({"_id": ObjectId(bank_id)}, {"bank_name": 1, "account_number": 1})
+    if not bank:
+        return jsonify({"ok": False, "error": "Bank not found"}), 404
+
+    bank_name = bank.get("bank_name")
+    last4 = (bank.get("account_number") or "")[-4:]
+    skip = int(request.args.get("skip", 0) or 0)
+    limit = int(request.args.get("limit", 3) or 3)
+
+    query = {"bank_name": bank_name, "account_last4": last4, "status": "confirmed"}
+    start_str = request.args.get("start_date")
+    end_str = request.args.get("end_date")
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, "%Y-%m-%d")
+            end_date = datetime.strptime(end_str, "%Y-%m-%d")
+            query["date"] = {"$gte": start_date, "$lte": end_date}
+        except ValueError:
+            pass
+
+    total = payments_col.count_documents(query)
+    rows = list(
+        payments_col.find(query, {"date": 1, "amount": 1, "account_last4": 1, "proof_url": 1})
+        .sort("date", -1)
+        .skip(skip)
+        .limit(limit)
+    )
+    items = []
+    for r in rows:
+        dt = r.get("date")
+        items.append({
+            "date_str": dt.strftime("%Y-%m-%d %H:%M") if isinstance(dt, datetime) else str(dt or "—"),
+            "amount": _f(r.get("amount")),
+            "account_last4": r.get("account_last4") or "—",
+            "proof_url": r.get("proof_url") or "",
+        })
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + len(items) < total
+    })
+
+# ---------------- API: P-Tax history ----------------
+@bank_profile_bp.route("/bank-profile/<bank_id>/history/ptax", methods=["GET"])
+def history_ptax(bank_id):
+    if not ObjectId.is_valid(bank_id):
+        return jsonify({"ok": False, "error": "Invalid bank id"}), 400
+
+    skip = int(request.args.get("skip", 0) or 0)
+    limit = int(request.args.get("limit", 3) or 3)
+    match = {"source_bank_id": ObjectId(bank_id), "type": {"$regex": r"^p[\s_-]*tax$", "$options": "i"}}
+
+    total = tax_col.count_documents(match)
+    pipe = [
+        {"$match": match},
         {"$sort": {"payment_date": -1}},
+        {"$skip": skip},
+        {"$limit": limit},
         {"$lookup": {"from": "orders", "localField": "order_oid", "foreignField": "_id", "as": "ord"}}
     ]
-    for r in tax_col.aggregate(tax_pipe):
-        # If lookup by order_oid failed (older records), attempt fallback by order_id
+    items = []
+    for r in tax_col.aggregate(pipe):
         ord_doc = r.get("ord", [{}])[0] if r.get("ord") else _find_order_from_tax_doc(r)
         qty = _f(ord_doc.get("quantity"))
         s_tax_per_l = _stax_per_l(ord_doc)
         pd = r.get("payment_date")
         pd_str = pd.strftime("%Y-%m-%d") if isinstance(pd, datetime) else str(pd or "—")
         order_code = ord_doc.get("order_id") or (str(r.get("order_id")) if r.get("order_id") else "—")
-        bank_tax_rows.append({
+        items.append({
             "amount": _f(r.get("amount")),
             "payment_date_str": pd_str,
             "reference": r.get("reference") or "—",
@@ -147,9 +303,33 @@ def bank_profile(bank_id):
             "quantity": qty,
             "s_tax_per_l": s_tax_per_l
         })
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + len(items) < total
+    })
 
-    # ---------- BDC payment history (JOIN orders for qty & s_bdc & order code) ----------
-    bank_bdc_rows = []
+# ---------------- API: BDC history ----------------
+@bank_profile_bp.route("/bank-profile/<bank_id>/history/bdc", methods=["GET"])
+def history_bdc(bank_id):
+    if not ObjectId.is_valid(bank_id):
+        return jsonify({"ok": False, "error": "Invalid bank id"}), 400
+
+    skip = int(request.args.get("skip", 0) or 0)
+    limit = int(request.args.get("limit", 3) or 3)
+
+    count_pipe = [
+        {"$match": {"bank_paid_history": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$bank_paid_history"},
+        {"$match": {"bank_paid_history.bank_id": ObjectId(bank_id)}},
+        {"$count": "total"}
+    ]
+    count_row = next(sbdc_col.aggregate(count_pipe), None)
+    total = int(count_row.get("total", 0)) if count_row else 0
+
     pipe = [
         {"$match": {"bank_paid_history": {"$exists": True, "$ne": []}}},
         {"$unwind": "$bank_paid_history"},
@@ -168,17 +348,19 @@ def bank_profile(bank_id):
             },
             "order_code": {"$ifNull": [{"$arrayElemAt": ["$ord.order_id", 0]}, "—"]}
         }},
-        {"$sort": {"bank_paid_history.date": -1}}
+        {"$sort": {"bank_paid_history.date": -1}},
+        {"$skip": skip},
+        {"$limit": limit}
     ]
     rows = list(sbdc_col.aggregate(pipe))
 
-    # resolve bdc names
     bdc_map = {}
     needed_ids = list({r.get("bdc_id_eff") for r in rows if r.get("bdc_id_eff")})
     if needed_ids:
         for b in bdc_col.find({"_id": {"$in": needed_ids}}, {"name": 1}):
             bdc_map[b["_id"]] = b.get("name")
 
+    items = []
     for r in rows:
         dt = r.get("bank_paid_history", {}).get("date") or r.get("date")
         amt = (r.get("bank_paid_history", {}).get("amount")
@@ -188,7 +370,7 @@ def bank_profile(bank_id):
         by  = (r.get("bank_paid_history", {}).get("paid_by")
                if isinstance(r.get("bank_paid_history"), dict) else r.get("paid_by"))
 
-        bank_bdc_rows.append({
+        items.append({
             "amount": _f(amt),
             "payment_date_str": dt.strftime("%Y-%m-%d") if isinstance(dt, datetime) else "—",
             "reference": ref or "—",
@@ -199,18 +381,70 @@ def bank_profile(bank_id):
             "quantity": float(r.get("qty_d") or 0),
             "s_bdc_per_l": float(r.get("s_bdc_per_l_d") or 0),
         })
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + len(items) < total
+    })
 
-    return render_template(
-        "partials/bank_profile.html",
-        bank=bank,
-        bank_id_str=bank_id_str,
-        payments=payments,
-        total_received=total_received,
-        start_date=start_str,
-        end_date=end_str,
-        bank_tax_rows=bank_tax_rows,
-        bank_bdc_rows=bank_bdc_rows
+# ---------------- API: manual transactions history ----------------
+@bank_profile_bp.route("/bank-profile/<bank_id>/history/manual", methods=["GET"])
+def history_manual(bank_id):
+    if not ObjectId.is_valid(bank_id):
+        return jsonify({"ok": False, "error": "Invalid bank id"}), 400
+
+    skip = int(request.args.get("skip", 0) or 0)
+    limit = int(request.args.get("limit", 3) or 3)
+    query = {"bank_id": ObjectId(bank_id)}
+    start_str = request.args.get("start_date")
+    end_str = request.args.get("end_date")
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, "%Y-%m-%d")
+            end_date = datetime.strptime(end_str, "%Y-%m-%d")
+            query["txn_date"] = {"$gte": start_date, "$lte": end_date}
+        except ValueError:
+            pass
+
+    total = bank_txn_col.count_documents(query)
+    rows = list(
+        bank_txn_col.find(query)
+        .sort([("txn_date", -1), ("created_at", -1), ("_id", -1)])
+        .skip(skip)
+        .limit(limit)
     )
+    other_ids = list({r.get("other_bank_id") for r in rows if r.get("other_bank_id")})
+    other_map = {}
+    if other_ids:
+        for b in accounts_col.find({"_id": {"$in": other_ids}}, {"bank_name": 1, "account_name": 1}):
+            other_map[b["_id"]] = b.get("bank_name") or b.get("account_name") or ""
+
+    items = []
+    for r in rows:
+        dt = r.get("txn_date") or r.get("created_at")
+        dt_str = dt.strftime("%Y-%m-%d") if isinstance(dt, datetime) else str(dt or "—")
+        created_by = r.get("created_by") or {}
+        created_by_name = created_by.get("name") if isinstance(created_by, dict) else created_by
+        items.append({
+            "txn_date_str": dt_str,
+            "type": r.get("type") or "",
+            "reference": r.get("reference") or "",
+            "narration": r.get("narration") or "",
+            "amount": _f(r.get("amount")),
+            "counterparty": other_map.get(r.get("other_bank_id"), ""),
+            "created_by": created_by_name or "",
+        })
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + len(items) < total
+    })
 
 # ---------------- API: OMC P-Tax debts (now includes avg S-Tax & total qty) ----------------
 @bank_profile_bp.route("/bank-profile/<bank_id>/omc-debts", methods=["GET"])
@@ -417,6 +651,50 @@ def bdc_debts(bank_id):
         ]
         rows = list(sbdc_col.aggregate(pipe))
         return jsonify({"status":"success", "debts": rows})
+    except Exception as e:
+        return jsonify({"status":"error", "message": str(e)}), 500
+
+# ---------------- API: manual transactions for bank profile ----------------
+@bank_profile_bp.route("/bank-profile/<bank_id>/manual-txns", methods=["GET"])
+def manual_txns(bank_id):
+    if not ObjectId.is_valid(bank_id):
+        return jsonify({"status": "error", "message": "Invalid bank id"}), 400
+    try:
+        start_str = request.args.get("start_date")
+        end_str = request.args.get("end_date")
+        query = {"bank_id": ObjectId(bank_id)}
+        if start_str and end_str:
+            try:
+                start_date = datetime.strptime(start_str, "%Y-%m-%d")
+                end_date   = datetime.strptime(end_str, "%Y-%m-%d")
+                query["txn_date"] = {"$gte": start_date, "$lte": end_date}
+            except ValueError:
+                pass
+
+        rows = list(bank_txn_col.find(query).sort([("txn_date", -1), ("created_at", -1)]).limit(200))
+        other_ids = list({r.get("other_bank_id") for r in rows if r.get("other_bank_id")})
+        other_map = {}
+        if other_ids:
+            for b in accounts_col.find({"_id": {"$in": other_ids}}, {"bank_name": 1, "account_name": 1}):
+                other_map[b["_id"]] = b.get("bank_name") or b.get("account_name") or ""
+
+        payload = []
+        for r in rows:
+            dt = r.get("txn_date")
+            dt_str = dt.strftime("%Y-%m-%d") if isinstance(dt, datetime) else str(dt or "")
+            created_by = r.get("created_by") or {}
+            created_by_name = created_by.get("name") if isinstance(created_by, dict) else created_by
+            payload.append({
+                "id": str(r.get("_id")),
+                "type": r.get("type") or "",
+                "amount": float(r.get("amount") or 0),
+                "txn_date": dt_str,
+                "reference": r.get("reference") or "",
+                "narration": r.get("narration") or "",
+                "counterparty": other_map.get(r.get("other_bank_id"), ""),
+                "created_by": created_by_name or "",
+            })
+        return jsonify({"status": "success", "transactions": payload})
     except Exception as e:
         return jsonify({"status":"error", "message": str(e)}), 500
 # ---------------- API: pay BDC from this bank (allocates oldest-first) ----------------
