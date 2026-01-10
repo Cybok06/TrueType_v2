@@ -817,13 +817,14 @@
     showSpinner();
     $.post(`/orders/update/${$form.data('id')}`, $form.serialize())
       .done(function (res) {
-        if (res.approved && res.invoice_url) {
-          const a = document.createElement('a');
-          a.href = res.invoice_url; a.target = '_blank'; a.rel = 'noopener';
-          document.body.appendChild(a); a.click(); a.remove();
-          resetModalState();
-          if (typeof loadContent === 'function') setTimeout(() => loadContent('/orders','Review Orders'), 150);
-          else setTimeout(() => location.reload(), 150);
+        if (res.approved) {
+          if (res.invoice_url) {
+            const doDownload = window.confirm('Download invoice now?');
+            if (doDownload) {
+              window.open(res.invoice_url, '_blank', 'noopener');
+            }
+          }
+          showNotice(res.message || 'Order updated and approved.', 'Order Approved');
           return;
         }
         showNotice(res.message || 'Saved.', 'Order Updated');
